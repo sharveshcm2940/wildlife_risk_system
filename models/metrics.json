@@ -1,0 +1,142 @@
+{
+  "roc_auc": 0.8089,
+  "avg_precision": 0.3638,
+  "brier_score": 0.123,
+  "accuracy": 0.8154,
+  "confusion": [
+    [
+      1804,
+      242
+    ],
+    [
+      201,
+      153
+    ]
+  ],
+  "n_train": 9600,
+  "n_test": 2400,
+  "best_iteration": 499,
+  "shap_importance": [
+    {
+      "feature": "driver_risk",
+      "shap_mean": 0.8974384665489197
+    },
+    {
+      "feature": "season",
+      "shap_mean": 0.8211171627044678
+    },
+    {
+      "feature": "movement_score",
+      "shap_mean": 0.5400308966636658
+    },
+    {
+      "feature": "night_flag",
+      "shap_mean": 0.3302553594112396
+    },
+    {
+      "feature": "species_risk",
+      "shap_mean": 0.31653663516044617
+    },
+    {
+      "feature": "rainfall_mm",
+      "shap_mean": 0.2497778832912445
+    },
+    {
+      "feature": "breeding_season",
+      "shap_mean": 0.1860540509223938
+    },
+    {
+      "feature": "dist_water_km",
+      "shap_mean": 0.1857374608516693
+    },
+    {
+      "feature": "visibility_m",
+      "shap_mean": 0.17763718962669373
+    },
+    {
+      "feature": "rolling_7day",
+      "shap_mean": 0.1733115017414093
+    },
+    {
+      "feature": "curvature_deg_km",
+      "shap_mean": 0.16892404854297638
+    },
+    {
+      "feature": "speed_ratio",
+      "shap_mean": 0.16194313764572144
+    },
+    {
+      "feature": "humidity_pct",
+      "shap_mean": 0.1572670191526413
+    },
+    {
+      "feature": "night_light",
+      "shap_mean": 0.14948482811450958
+    },
+    {
+      "feature": "protected_dist_km",
+      "shap_mean": 0.1443697214126587
+    },
+    {
+      "feature": "corridor_dist_km",
+      "shap_mean": 0.13659940659999847
+    },
+    {
+      "feature": "kde_density",
+      "shap_mean": 0.13506241142749786
+    },
+    {
+      "feature": "temperature_c",
+      "shap_mean": 0.12663240730762482
+    },
+    {
+      "feature": "road_type",
+      "shap_mean": 0.12518617510795593
+    },
+    {
+      "feature": "ndvi",
+      "shap_mean": 0.1194060668349266
+    },
+    {
+      "feature": "actual_speed",
+      "shap_mean": 0.11581702530384064
+    },
+    {
+      "feature": "street_lighting",
+      "shap_mean": 0.10774824768304825
+    },
+    {
+      "feature": "hour",
+      "shap_mean": 0.10249333083629608
+    },
+    {
+      "feature": "road_width_m",
+      "shap_mean": 0.07392773032188416
+    },
+    {
+      "feature": "day_of_week",
+      "shap_mean": 0.0564236156642437
+    },
+    {
+      "feature": "species",
+      "shap_mean": 0.05500710755586624
+    },
+    {
+      "feature": "past_accidents",
+      "shap_mean": 0.04170948639512062
+    },
+    {
+      "feature": "rush_hour",
+      "shap_mean": 0.029353149235248566
+    },
+    {
+      "feature": "speed_limit",
+      "shap_mean": 0.016261959448456764
+    },
+    {
+      "feature": "dawn_dusk",
+      "shap_mean": 0.007466671522706747
+    }
+  ],
+  "shap_expected": 0.401030570268631
+}
