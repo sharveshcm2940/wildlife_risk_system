@@ -332,19 +332,52 @@ elif page == "🔮 Live Risk Predictor":
         dual_risk_gauge, shap_waterfall, get_risk_level,
         data_source_status_chart, PALETTE
     )
-    from data.realtime_extractor import RealtimeDataExtractor
+    from data.realtime_extractor import RealtimeDataExtractor, geocode_place, PROTECTED_AREAS, WILDLIFE_CORRIDORS
 
     st.markdown("""
     <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 0.3rem 0;'>
       🔮 Live <span style='color:#FF6B35;'>Risk Prediction</span> Pipeline
     </h1>
     <p style='color:#8B949E; font-size:0.82rem; margin:0 0 1.2rem 0;'>
-      Extracts real-time data from APIs, news sites & govt portals → feeds into both models → shows results
+      Search any place in India → extracts real-time data from APIs, news sites & govt portals → dual-model prediction
     </p>
     """, unsafe_allow_html=True)
 
-    # ── Location & speed inputs ───────────────────────────────────────────────
-    st.markdown("<div class='section-header'>📍 Select Location & Conditions</div>", unsafe_allow_html=True)
+    # ── Location inputs: Search + Presets + Manual ────────────────────────────
+    st.markdown("<div class='section-header'>📍 Search Location</div>", unsafe_allow_html=True)
+
+    # Search bar
+    search_col, search_btn_col = st.columns([4, 1])
+    with search_col:
+        place_query = st.text_input(
+            "🔍 Search any place in India",
+            placeholder="e.g., Bandipur Tiger Reserve, Mysore-Ooty Highway, Wayanad...",
+            key="place_search"
+        )
+    with search_btn_col:
+        st.markdown("<br>", unsafe_allow_html=True)
+        search_clicked = st.button("🔎 Search", use_container_width=True)
+
+    # Handle geocoding
+    resolved_lat, resolved_lon = None, None
+    resolved_name = ""
+    if search_clicked and place_query:
+        with st.spinner(f"🌍 Geocoding '{place_query}' via Nominatim (OpenStreetMap)..."):
+            geo_result = geocode_place(place_query)
+        if geo_result and geo_result.get("found"):
+            resolved_lat = geo_result["lat"]
+            resolved_lon = geo_result["lon"]
+            resolved_name = geo_result.get("display_name", "")
+            st.success(f"📍 **Found:** {resolved_name}")
+            st.markdown(f"<div style='font-size:0.78rem; color:var(--muted);'>Lat: {resolved_lat:.5f} | Lon: {resolved_lon:.5f} | Type: {geo_result.get('place_type','')}</div>", unsafe_allow_html=True)
+            if len(geo_result.get("all_results", [])) > 1:
+                with st.expander("Other matching locations"):
+                    for r in geo_result["all_results"][1:]:
+                        st.markdown(f"- {r['name']} ({r['lat']:.4f}, {r['lon']:.4f})")
+        else:
+            st.error(f"❌ Could not find '{place_query}'. Try a more specific name.")
+
+    st.markdown("<div style='text-align:center; color:var(--muted); font-size:0.75rem; margin:0.3rem 0;'>─── OR select a preset ───</div>", unsafe_allow_html=True)
 
     PRESETS = {
         "Custom Location": (12.0, 76.5),
@@ -368,9 +401,13 @@ elif page == "🔮 Live Risk Predictor":
         preset = st.selectbox("Predefined Wildlife Zones", list(PRESETS.keys()))
     with c2:
         default_lat, default_lon = PRESETS[preset]
-        lat = st.number_input("Latitude",  min_value=8.0, max_value=25.0, value=default_lat, step=0.01)
+        if resolved_lat is not None:
+            default_lat = resolved_lat
+        lat = st.number_input("Latitude", min_value=6.0, max_value=37.0, value=default_lat, step=0.01)
     with c3:
-        lon = st.number_input("Longitude", min_value=74.0, max_value=82.0, value=default_lon, step=0.01)
+        if resolved_lon is not None:
+            default_lon = resolved_lon
+        lon = st.number_input("Longitude", min_value=68.0, max_value=97.0, value=default_lon, step=0.01)
 
     c4, c5, c6 = st.columns(3)
     with c4: speed_limit  = st.selectbox("Speed Limit (km/h)", [30, 40, 60, 80, 100], index=2)
@@ -391,6 +428,20 @@ elif page == "🔮 Live Risk Predictor":
             )
             extraction_log = extractor.get_extraction_log()
             summary        = extractor.get_extraction_summary()
+
+        # Save to session_state so Map page can access it
+        spatial_data = None
+        for er in extractor.extraction_log:
+            if er.source_type == "computation" and "nearest_pa" in er.data:
+                spatial_data = er.data
+        st.session_state["last_prediction"] = {
+            "lat": lat, "lon": lon,
+            "location_name": resolved_name or preset,
+            "features": feature_df.iloc[0].to_dict(),
+            "log": extraction_log,
+            "summary": summary,
+            "spatial": spatial_data,
+        }
 
         # ── DATA SOURCE STATUS ────────────────────────────────────────────────
         st.markdown("<div class='section-header'>📡 Real-Time Data Extraction — 7 Sources</div>", unsafe_allow_html=True)
@@ -566,54 +617,273 @@ elif page == "🔮 Live Risk Predictor":
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PAGE 3 — RISK MAP
+# PAGE 3 — RISK MAP (Heatmap + Live Prediction Toggle)
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "🗺 Risk Map":
     from streamlit_folium import st_folium
-    from utils.helpers import build_folium_map
+    from utils.helpers import build_folium_map, get_risk_level
+    from data.realtime_extractor import PROTECTED_AREAS, WILDLIFE_CORRIDORS
+    import folium
+    from folium.plugins import HeatMap, MarkerCluster
 
     st.markdown("""
     <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 0.5rem 0;'>
       🗺 Geospatial <span style='color:#FF6B35;'>Risk Map</span>
     </h1>
-    <p style='color:#8B949E; font-size:0.85rem; margin:0 0 1rem 0;'>
-      Kernel density heatmap of historical wildlife-vehicle collisions
-    </p>
     """, unsafe_allow_html=True)
 
-    fc1, fc2, fc3 = st.columns(3)
-    with fc1: f_season  = st.multiselect("Filter Season", df["season"].unique().tolist(), default=df["season"].unique().tolist())
-    with fc2: f_species = st.multiselect("Filter Species", df["species"].unique().tolist(), default=df["species"].unique().tolist())
-    with fc3: f_road    = st.multiselect("Filter Road Type", df["road_type"].unique().tolist(), default=df["road_type"].unique().tolist())
+    # ── Toggle: Full Heatmap vs Live Prediction ──────────────────────────────
+    has_prediction = "last_prediction" in st.session_state
+    toggle_options = ["🌡️ Full Risk Heatmap (All Data)", "📍 Live Prediction Result"]
 
-    map_df = df[
-        df["season"].isin(f_season) &
-        df["species"].isin(f_species) &
-        df["road_type"].isin(f_road)
-    ]
+    map_mode = st.radio(
+        "Map View",
+        toggle_options,
+        index=1 if has_prediction else 0,
+        horizontal=True,
+        key="map_mode_toggle",
+    )
 
-    c_left, c_right = st.columns([3, 1])
-    with c_left:
-        m = build_folium_map(map_df)
-        st_folium(m, width=None, height=600, returned_objects=[])
-
-    with c_right:
-        st.markdown("<div class='section-header'>Map Legend</div>", unsafe_allow_html=True)
-        for color, label in [("#06D6A0","Low Risk"),("#FFD166","Moderate"),("#EF476F","High Risk"),("#B5179E","Critical")]:
-            st.markdown(f"<div style='display:flex;align-items:center;gap:0.5rem;margin:0.3rem 0;'><div style='width:14px;height:14px;border-radius:50%;background:{color};'></div><span style='font-size:0.82rem;'>{label}</span></div>", unsafe_allow_html=True)
-
-        st.markdown("<div class='section-header'>Summary</div>", unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class='metric-card'>
-          <h3>Records shown</h3><div class='value' style='font-size:1.4rem;'>{len(map_df):,}</div>
-        </div>
-        <div class='metric-card'>
-          <h3>Accident events</h3><div class='value' style='font-size:1.4rem;'>{map_df["accident"].sum():,}</div>
-        </div>
-        <div class='metric-card'>
-          <h3>Avg risk score</h3><div class='value' style='font-size:1.4rem;'>{map_df["risk_score"].mean():.3f}</div>
-        </div>
+    # ══════════════════════════════════════════════════════════════════════════
+    #  MODE 1: FULL HEATMAP (training data + PAs + corridors)
+    # ══════════════════════════════════════════════════════════════════════════
+    if map_mode == toggle_options[0]:
+        st.markdown("""
+        <p style='color:#8B949E; font-size:0.82rem; margin:0 0 1rem 0;'>
+          Risk heatmap from training data — density of wildlife-vehicle collision zones with all protected areas & corridors
+        </p>
         """, unsafe_allow_html=True)
+
+        # Filters
+        fc1, fc2, fc3 = st.columns(3)
+        with fc1: f_season  = st.multiselect("Season",    df["season"].unique().tolist(),    default=df["season"].unique().tolist())
+        with fc2: f_species = st.multiselect("Species",   df["species"].unique().tolist(),   default=df["species"].unique().tolist())
+        with fc3: f_road    = st.multiselect("Road Type", df["road_type"].unique().tolist(), default=df["road_type"].unique().tolist())
+
+        map_df = df[df["season"].isin(f_season) & df["species"].isin(f_species) & df["road_type"].isin(f_road)]
+
+        # Build rich Folium map
+        m = folium.Map(location=[15.0, 77.5], zoom_start=6, tiles="CartoDB dark_matter", control_scale=True)
+
+        # Heatmap layer from training data
+        acc = map_df[map_df["accident"] == 1][["latitude", "longitude", "risk_score"]].dropna()
+        heat_data = [[r.latitude, r.longitude, r.risk_score] for _, r in acc.iterrows()]
+        if heat_data:
+            HeatMap(
+                heat_data, min_opacity=0.3, max_zoom=14, radius=18, blur=15,
+                gradient={"0.2": "#06D6A0", "0.5": "#FFD166", "0.75": "#EF476F", "1.0": "#B5179E"},
+            ).add_to(m)
+
+        # Protected Areas layer
+        pa_group = folium.FeatureGroup(name="🟢 Protected Areas (21)")
+        for pa in PROTECTED_AREAS:
+            folium.CircleMarker(
+                location=[pa["lat"], pa["lon"]], radius=7,
+                color="#06D6A0", fill=True, fill_color="#06D6A0", fill_opacity=0.7,
+                popup=folium.Popup(f"<b>🟢 {pa['name']}</b><br>{pa.get('state','')}", max_width=220),
+                tooltip=pa["name"],
+            ).add_to(pa_group)
+        pa_group.add_to(m)
+
+        # Corridors layer
+        cor_group = folium.FeatureGroup(name="🟠 Wildlife Corridors (11)")
+        for cor in WILDLIFE_CORRIDORS:
+            folium.CircleMarker(
+                location=[cor["lat"], cor["lon"]], radius=5,
+                color="#FFD166", fill=True, fill_color="#FFD166", fill_opacity=0.7,
+                popup=folium.Popup(f"<b>🟠 {cor['name']}</b><br>Wildlife Corridor", max_width=220),
+                tooltip=cor["name"],
+            ).add_to(cor_group)
+        cor_group.add_to(m)
+
+        # High-risk markers
+        high = map_df[map_df["risk_score"] > 0.70].head(150)
+        cluster = MarkerCluster(name="🔴 High Risk Incidents").add_to(m)
+        for _, row in high.iterrows():
+            rl = get_risk_level(row["risk_score"])
+            folium.CircleMarker(
+                location=[row["latitude"], row["longitude"]], radius=5,
+                color=rl["color"], fill=True, fill_opacity=0.8,
+                popup=folium.Popup(
+                    f"<b>{rl['emoji']} {rl['label']}</b><br>"
+                    f"Risk: {row['risk_score']:.2%}<br>"
+                    f"Species: {row.get('species','–')}<br>"
+                    f"Road: {row.get('road_type','–')}<br>"
+                    f"Hour: {int(row.get('hour',0)):02d}:00",
+                    max_width=200),
+            ).add_to(cluster)
+
+        folium.LayerControl().add_to(m)
+
+        # Render
+        c_left, c_right = st.columns([3, 1])
+        with c_left:
+            st_folium(m, width=None, height=620, returned_objects=[])
+
+        with c_right:
+            st.markdown("<div class='section-header'>Map Legend</div>", unsafe_allow_html=True)
+            for color, label in [("#06D6A0","🟢 Protected Areas"),("#FFD166","🟠 Corridors"),("#EF476F","🔴 High Risk"),("#B5179E","🟣 Critical")]:
+                st.markdown(f"<div style='display:flex;align-items:center;gap:0.5rem;margin:0.3rem 0;'><div style='width:14px;height:14px;border-radius:50%;background:{color};'></div><span style='font-size:0.82rem;'>{label}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style='margin-top:0.5rem; padding:0.3rem 0; border-top:1px solid var(--border);'></div>
+            <div class='section-header'>Summary</div>
+            """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class='metric-card'>
+              <h3>Records</h3><div class='value' style='font-size:1.3rem;'>{len(map_df):,}</div>
+            </div>
+            <div class='metric-card'>
+              <h3>Accidents</h3><div class='value' style='font-size:1.3rem;'>{int(map_df["accident"].sum()):,}</div>
+            </div>
+            <div class='metric-card'>
+              <h3>Avg Risk</h3><div class='value' style='font-size:1.3rem;'>{map_df["risk_score"].mean():.3f}</div>
+            </div>
+            <div class='metric-card'>
+              <h3>Heatmap Points</h3><div class='value' style='font-size:1.3rem;'>{len(heat_data):,}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  MODE 2: LIVE PREDICTION (from Live Risk Predictor result)
+    # ══════════════════════════════════════════════════════════════════════════
+    else:
+        if not has_prediction:
+            st.warning("⚠️ No live prediction data yet. Go to **🔮 Live Risk Predictor** and run an extraction first.")
+            st.info("The Live Risk Predictor fetches real-time data from 7 sources (APIs, news, govt portals) and the results will appear here on the map.")
+        else:
+            pred = st.session_state["last_prediction"]
+            feat = pred["features"]
+            spatial = pred["spatial"] or {}
+            pred_lat, pred_lon = pred["lat"], pred["lon"]
+            loc_name = pred.get("location_name", "Searched Location")
+
+            st.markdown(f"""
+            <p style='color:#8B949E; font-size:0.82rem; margin:0 0 0.5rem 0;'>
+              Showing extracted data for <b style='color:#FF6B35;'>{loc_name}</b> · Lat {pred_lat:.4f}, Lon {pred_lon:.4f}
+            </p>
+            """, unsafe_allow_html=True)
+
+            # Build focused map
+            m = folium.Map(location=[pred_lat, pred_lon], zoom_start=11, tiles="CartoDB dark_matter", control_scale=True)
+
+            # Nearby PAs (within ~100km)
+            from data.realtime_extractor import _haversine
+            nearby_pas = []
+            for pa in PROTECTED_AREAS:
+                d = _haversine(pred_lat, pred_lon, pa["lat"], pa["lon"])
+                if d < 100:
+                    nearby_pas.append((d, pa))
+                    folium.CircleMarker(
+                        location=[pa["lat"], pa["lon"]], radius=8,
+                        color="#06D6A0", fill=True, fill_color="#06D6A0", fill_opacity=0.7,
+                        popup=folium.Popup(f"<b>🟢 {pa['name']}</b><br>{pa.get('state','')}<br>{d:.1f}km away", max_width=220),
+                        tooltip=f"{pa['name']} ({d:.0f}km)",
+                    ).add_to(m)
+
+            # Nearby corridors
+            nearby_cors = []
+            for cor in WILDLIFE_CORRIDORS:
+                d = _haversine(pred_lat, pred_lon, cor["lat"], cor["lon"])
+                if d < 100:
+                    nearby_cors.append((d, cor))
+                    folium.CircleMarker(
+                        location=[cor["lat"], cor["lon"]], radius=6,
+                        color="#FFD166", fill=True, fill_color="#FFD166", fill_opacity=0.7,
+                        popup=folium.Popup(f"<b>🟠 {cor['name']}</b><br>{d:.1f}km away", max_width=220),
+                        tooltip=f"{cor['name']} ({d:.0f}km)",
+                    ).add_to(m)
+
+            # Prediction marker
+            risk_score = feat.get("driver_risk", 0.5)
+            risk_color = "#06D6A0" if risk_score < 0.4 else "#FFD166" if risk_score < 0.7 else "#EF476F" if risk_score < 1.0 else "#B5179E"
+
+            popup_html = f"""
+            <div style='font-family:sans-serif; min-width:260px;'>
+                <h3 style='margin:0 0 6px 0; color:{risk_color};'>📍 {loc_name}</h3>
+                <table style='font-size:11px; width:100%;'>
+                    <tr><td><b>Species</b></td><td>{feat.get('species','—').capitalize()} (risk {feat.get('species_risk',0):.0%})</td></tr>
+                    <tr><td><b>Road Type</b></td><td>{feat.get('road_type','—')}</td></tr>
+                    <tr><td><b>Temperature</b></td><td>{feat.get('temperature_c',0):.1f}°C</td></tr>
+                    <tr><td><b>Humidity</b></td><td>{feat.get('humidity_pct',0):.0f}%</td></tr>
+                    <tr><td><b>Rain</b></td><td>{feat.get('rainfall_mm',0):.1f}mm</td></tr>
+                    <tr><td><b>Visibility</b></td><td>{feat.get('visibility_m',0)}m</td></tr>
+                    <tr><td><b>NDVI</b></td><td>{feat.get('ndvi',0):.3f}</td></tr>
+                    <tr><td><b>Nearest PA</b></td><td>{spatial.get('nearest_pa','—')} ({spatial.get('protected_dist_km',0):.1f}km)</td></tr>
+                    <tr><td><b>Nearest Corridor</b></td><td>{spatial.get('nearest_corridor','—')} ({spatial.get('corridor_dist_km',0):.1f}km)</td></tr>
+                    <tr><td><b>Driver Risk</b></td><td style='color:{risk_color}; font-weight:bold;'>{risk_score:.3f}</td></tr>
+                </table>
+            </div>
+            """
+            folium.Marker(
+                location=[pred_lat, pred_lon],
+                popup=folium.Popup(popup_html, max_width=320),
+                tooltip=f"📍 {loc_name} — Risk {risk_score:.3f}",
+                icon=folium.Icon(color="red", icon="exclamation-triangle", prefix="fa"),
+            ).add_to(m)
+
+            # Analysis radius
+            folium.Circle(
+                location=[pred_lat, pred_lon], radius=5000,
+                color=risk_color, fill=True, fill_opacity=0.08, popup="5km analysis area",
+            ).add_to(m)
+
+            # Risk heatmap point (single-point, visually showing the searched area)
+            HeatMap(
+                [[pred_lat, pred_lon, risk_score]],
+                min_opacity=0.4, radius=40, blur=25,
+                gradient={"0.2": "#06D6A0", "0.5": "#FFD166", "0.75": "#EF476F", "1.0": "#B5179E"},
+            ).add_to(m)
+
+            folium.LayerControl().add_to(m)
+
+            # Render
+            c_left, c_right = st.columns([3, 1])
+            with c_left:
+                st_folium(m, width=None, height=620, returned_objects=[])
+
+            with c_right:
+                st.markdown("<div class='section-header'>📍 Extracted Data</div>", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div class='metric-card'>
+                  <h3>Location</h3><div class='value' style='font-size:0.85rem;'>{loc_name[:40]}</div>
+                  <div class='sub'>{pred_lat:.4f}, {pred_lon:.4f}</div>
+                </div>
+                <div class='metric-card'>
+                  <h3>Nearest PA</h3><div class='value' style='font-size:0.9rem;'>{spatial.get('nearest_pa','—')}</div>
+                  <div class='sub'>{spatial.get('protected_dist_km',0):.1f}km · {spatial.get('nearest_pa_state','')}</div>
+                </div>
+                <div class='metric-card'>
+                  <h3>Nearest Corridor</h3><div class='value' style='font-size:0.9rem;'>{spatial.get('nearest_corridor','—')}</div>
+                  <div class='sub'>{spatial.get('corridor_dist_km',0):.1f}km</div>
+                </div>
+                <div class='metric-card'>
+                  <h3>Species</h3><div class='value' style='font-size:1.1rem;'>{feat.get('species','—').capitalize()}</div>
+                  <div class='sub'>Risk: {feat.get('species_risk',0):.0%}</div>
+                </div>
+                <div class='metric-card'>
+                  <h3>Weather</h3><div class='value' style='font-size:0.9rem;'>{feat.get('temperature_c',0):.1f}°C · {feat.get('humidity_pct',0):.0f}%</div>
+                  <div class='sub'>Rain {feat.get('rainfall_mm',0):.1f}mm · Vis {feat.get('visibility_m',0)}m</div>
+                </div>
+                <div class='metric-card'>
+                  <h3>NDVI / Road</h3><div class='value' style='font-size:0.9rem;'>{feat.get('ndvi',0):.3f} · {feat.get('road_type','—')}</div>
+                  <div class='sub'>Width {feat.get('road_width_m',0)}m · Light {'Yes' if feat.get('street_lighting',0) else 'No'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                st.markdown(f"<div style='margin-top:0.5rem; border-top:1px solid var(--border); padding-top:0.4rem;'></div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-header'>📡 Data Sources</div>", unsafe_allow_html=True)
+                summary = pred["summary"]
+                st.markdown(f"**{summary['success_count']}/{summary['total_sources']}** sources · **{summary['total_time_ms']}ms**")
+                for l in pred["log"]:
+                    icon = "✅" if l["status"]=="success" else "⚠️"
+                    st.markdown(f"<div style='font-size:0.68rem;'>{icon} {l['source'][:28]} · {l['response_ms']}ms</div>", unsafe_allow_html=True)
+
+                st.markdown(f"""
+                <div style='margin-top:0.5rem; border-top:1px solid var(--border); padding-top:0.4rem;'></div>
+                <div class='section-header'>📌 Nearby</div>
+                """, unsafe_allow_html=True)
+                st.markdown(f"**{len(nearby_pas)}** Protected Areas within 100km")
+                st.markdown(f"**{len(nearby_cors)}** Corridors within 100km")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

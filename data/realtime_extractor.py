@@ -142,6 +142,43 @@ def _haversine(lat1, lon1, lat2, lon2):
     return R * 2 * atan2(sqrt(a), sqrt(1-a))
 
 
+def geocode_place(place_name: str) -> Optional[dict]:
+    """
+    Geocode a place name to lat/lon using Nominatim (OpenStreetMap).
+    Free, no API key required. Returns dict with lat, lon, display_name, bbox.
+    """
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": place_name,
+            "format": "json",
+            "limit": 5,
+            "countrycodes": "in",  # Restrict to India
+        }
+        headers = {"User-Agent": "WildGuardAI/3.0 (wildlife-risk-research; educational)"}
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        resp.raise_for_status()
+        results = resp.json()
+        if results:
+            best = results[0]
+            return {
+                "found": True,
+                "lat": float(best["lat"]),
+                "lon": float(best["lon"]),
+                "display_name": best.get("display_name", place_name),
+                "place_type": best.get("type", ""),
+                "importance": float(best.get("importance", 0)),
+                "bbox": best.get("boundingbox", []),
+                "all_results": [
+                    {"name": r.get("display_name","")[:80], "lat": float(r["lat"]), "lon": float(r["lon"])}
+                    for r in results[:5]
+                ],
+            }
+        return {"found": False, "error": "No results found for query"}
+    except Exception as e:
+        return {"found": False, "error": str(e)}
+
+
 class ExtractionResult:
     def __init__(self, source_name, api_url, description):
         self.source_name = source_name
