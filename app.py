@@ -1,6 +1,6 @@
 """
-Wildlife-Vehicle Collision Risk Prediction System
-Main Streamlit Application
+WildGuard AI — Wildlife-Vehicle Collision Risk Prediction System
+Main Streamlit Application with Real-Time Data Pipeline
 """
 
 import sys, os
@@ -13,6 +13,7 @@ import json
 import plotly.graph_objects as go
 import plotly.express as px
 from pathlib import Path
+from datetime import datetime
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -34,6 +35,8 @@ st.markdown("""
   --orange:   #FF6B35;
   --teal:     #00D4AA;
   --amber:    #FFD166;
+  --blue:     #58A6FF;
+  --purple:   #BC8CF2;
   --low:      #06D6A0;
   --med:      #FFD166;
   --high:     #EF476F;
@@ -48,11 +51,9 @@ html, body, .stApp {
   font-family: 'Sora', sans-serif;
 }
 
-/* Hide default Streamlit chrome */
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding: 1.5rem 2rem !important; max-width: 100% !important; }
 
-/* Custom metric cards */
 .metric-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -81,7 +82,6 @@ html, body, .stApp {
   margin-top: 0.3rem;
 }
 
-/* Risk badge */
 .risk-badge {
   display: inline-block;
   padding: 0.3rem 1rem;
@@ -92,7 +92,6 @@ html, body, .stApp {
   letter-spacing: 0.05em;
 }
 
-/* Section headers */
 .section-header {
   font-family: 'Space Mono', monospace;
   font-size: 0.7rem;
@@ -104,7 +103,33 @@ html, body, .stApp {
   margin: 1.2rem 0 0.8rem 0;
 }
 
-/* Sidebar styling */
+.source-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  margin: 0.5rem 0;
+}
+.source-card .source-name {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+.source-card .source-url {
+  font-size: 0.7rem;
+  color: var(--muted);
+  word-break: break-all;
+  margin-bottom: 0.4rem;
+}
+.source-card .source-features {
+  font-size: 0.75rem;
+  color: var(--teal);
+}
+.status-success { color: var(--teal); }
+.status-fallback { color: var(--amber); }
+.status-error { color: var(--high); }
+
 [data-testid="stSidebar"] {
   background: var(--surface) !important;
   border-right: 1px solid var(--border);
@@ -116,7 +141,6 @@ html, body, .stApp {
   font-size: 0.82rem !important;
 }
 
-/* Streamlit elements override */
 .stSelectbox > div > div { background: var(--bg) !important; border-color: var(--border) !important; }
 .stSlider [data-baseweb="slider"] { background: var(--border) !important; }
 .stTabs [data-baseweb="tab-list"] { background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
@@ -142,9 +166,8 @@ div[data-testid="stMetricValue"] { font-family: 'Space Mono', monospace !importa
 # ── Model loading ─────────────────────────────────────────────────────────────
 MODEL_DIR = Path(__file__).parent / "models"
 
-@st.cache_resource(show_spinner="🌿 Training model on first run…")
+@st.cache_resource(show_spinner="🌿 Training both models on first run…")
 def load_or_train():
-    """Load cached model; train from scratch if unavailable."""
     from models.train import WildlifeRiskModel, train_and_save
     from data.generate_data import generate_dataset
 
@@ -161,8 +184,21 @@ def load_or_train():
     return model, df
 
 model, df = load_or_train()
-metrics   = model.metrics
-shap_imp  = metrics.get("shap_importance", [])
+
+# Get metrics (handle both old and new format)
+if "xgb" in model.metrics:
+    xgb_metrics = model.metrics["xgb"]
+    rf_metrics  = model.metrics.get("rf", {})
+    shap_imp    = xgb_metrics.get("shap_importance", [])
+    rf_imp      = rf_metrics.get("feature_importance", [])
+    best_model  = model.metrics.get("best_model", "XGBoost")
+else:
+    # Backward compat with old single-model format
+    xgb_metrics = model.metrics
+    rf_metrics  = {}
+    shap_imp    = model.metrics.get("shap_importance", [])
+    rf_imp      = []
+    best_model  = "XGBoost"
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -170,22 +206,34 @@ with st.sidebar:
     <div style='text-align:center; padding: 1rem 0 1.5rem 0;'>
       <div style='font-size:2.8rem;'>🐾</div>
       <div style='font-family:"Space Mono",monospace; font-size:1.1rem; color:#FF6B35; font-weight:700;'>WildGuard AI</div>
-      <div style='font-size:0.7rem; color:#8B949E; letter-spacing:0.12em;'>WILDLIFE RISK SYSTEM v2.0</div>
+      <div style='font-size:0.7rem; color:#8B949E; letter-spacing:0.12em;'>WILDLIFE RISK SYSTEM v3.0</div>
+      <div style='font-size:0.65rem; color:#58A6FF; letter-spacing:0.08em; margin-top:0.3rem;'>REAL-TIME DATA PIPELINE</div>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("---")
     page = st.radio(
         "Navigation",
-        ["🏠 Dashboard", "🔮 Risk Predictor", "🗺 Risk Map", "📊 Analytics", "🧠 Model Insights"],
+        ["🏠 Dashboard", "🔮 Live Risk Predictor", "🗺 Risk Map",
+         "📊 Analytics", "🧠 Model Insights", "📡 Data Sources"],
         label_visibility="collapsed"
     )
     st.markdown("---")
+
+    xgb_auc = xgb_metrics.get('roc_auc', 0)
+    rf_auc  = rf_metrics.get('roc_auc', 0)
     st.markdown(f"""
     <div class='metric-card' style='margin-top:0.5rem;'>
-      <h3>Model Status</h3>
-      <div class='value' style='font-size:1rem; color:#00D4AA;'>● ONLINE</div>
-      <div class='sub'>XGBoost  |  ROC-AUC: {metrics.get('roc_auc',0):.4f}</div>
+      <h3>XGBoost</h3>
+      <div class='value' style='font-size:0.9rem; color:#FF6B35;'>● ROC-AUC: {xgb_auc:.4f}</div>
+    </div>
+    <div class='metric-card' style='margin-top:0.3rem;'>
+      <h3>Random Forest</h3>
+      <div class='value' style='font-size:0.9rem; color:#58A6FF;'>● ROC-AUC: {rf_auc:.4f}</div>
+    </div>
+    <div class='metric-card' style='margin-top:0.3rem;'>
+      <h3>Best Model</h3>
+      <div class='value' style='font-size:0.85rem; color:#00D4AA;'>✦ {best_model}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -197,7 +245,8 @@ if page == "🏠 Dashboard":
     from utils.helpers import (
         hourly_risk_chart, species_risk_chart,
         season_road_heatmap, rolling_trend_chart, ndvi_risk_scatter,
-        confusion_matrix_chart, PALETTE
+        confusion_matrix_chart, model_comparison_chart, roc_comparison_chart,
+        PALETTE
     )
 
     st.markdown("""
@@ -206,7 +255,7 @@ if page == "🏠 Dashboard":
       <span style='color:#FF6B35;'>Risk Intelligence</span>
     </h1>
     <p style='color:#8B949E; font-size:0.88rem; margin:0 0 1.5rem 0;'>
-      Real-time ML-powered risk assessment for wildlife crossing hotspots
+      Dual-model ML system (XGBoost + Random Forest) with real-time data pipeline
     </p>
     """, unsafe_allow_html=True)
 
@@ -216,24 +265,35 @@ if page == "🏠 Dashboard":
     top_sp    = df[df["accident"]==1]["species"].value_counts().idxmax()
     top_road  = df[df["accident"]==1]["road_type"].value_counts().idxmax()
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     kpis = [
-        (c1, "Total Records",    f"{len(df):,}",           "Training dataset size"),
-        (c2, "Accident Rate",    f"{acc_rate:.1%}",         "Overall collision rate"),
-        (c3, "High-Risk Zones",  f"{high_risk:,}",          "Events with risk > 65%"),
-        (c4, "Riskiest Species", top_sp.capitalize(),        "Highest accident count"),
-        (c5, "Model ROC-AUC",    f"{metrics.get('roc_auc',0):.4f}", "XGBoost performance"),
+        (c1, "Total Records",    f"{len(df):,}",                     "Training data"),
+        (c2, "Accident Rate",    f"{acc_rate:.1%}",                  "Overall"),
+        (c3, "High-Risk Zones",  f"{high_risk:,}",                   "Risk > 65%"),
+        (c4, "Riskiest Species", top_sp.capitalize(),                 "Most accidents"),
+        (c5, "XGB AUC",          f"{xgb_metrics.get('roc_auc',0):.4f}", "XGBoost"),
+        (c6, "RF AUC",           f"{rf_metrics.get('roc_auc',0):.4f}",  "Random Forest"),
     ]
     for col, title, val, sub in kpis:
         with col:
             st.markdown(f"""
             <div class='metric-card'>
               <h3>{title}</h3>
-              <div class='value'>{val}</div>
+              <div class='value' style='font-size:1.6rem;'>{val}</div>
               <div class='sub'>{sub}</div>
             </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Model comparison row ──────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📈 Model Performance Comparison — XGBoost vs Random Forest</div>", unsafe_allow_html=True)
+    col_mc, col_roc = st.columns(2)
+    with col_mc:
+        if rf_metrics:
+            st.plotly_chart(model_comparison_chart(xgb_metrics, rf_metrics), use_container_width=True)
+    with col_roc:
+        if rf_metrics:
+            st.plotly_chart(roc_comparison_chart(xgb_metrics, rf_metrics), use_container_width=True)
 
     # ── Charts Row 1 ──────────────────────────────────────────────────────────
     col_a, col_b = st.columns([1.3, 1])
@@ -252,170 +312,257 @@ if page == "🏠 Dashboard":
     # ── Rolling trend ─────────────────────────────────────────────────────────
     st.plotly_chart(rolling_trend_chart(df), use_container_width=True)
 
-    # ── Confusion matrix + report ─────────────────────────────────────────────
-    col_e, col_f = st.columns([1, 1.5])
+    # ── Confusion matrices side by side ───────────────────────────────────────
+    st.markdown("<div class='section-header'>Confusion Matrices</div>", unsafe_allow_html=True)
+    col_e, col_f = st.columns(2)
     with col_e:
-        cm = metrics.get("confusion", [[0,0],[0,0]])
-        st.plotly_chart(confusion_matrix_chart(cm), use_container_width=True)
+        cm_xgb = xgb_metrics.get("confusion", [[0,0],[0,0]])
+        st.plotly_chart(confusion_matrix_chart(cm_xgb, "XGBoost — Confusion Matrix"), use_container_width=True)
     with col_f:
-        report = metrics.get("report", {})
-        if report:
-            st.markdown("<div class='section-header'>Classification Report</div>", unsafe_allow_html=True)
-            rdf = pd.DataFrame(report).T.round(3)
-            st.dataframe(
-                rdf.style.background_gradient(cmap="RdYlGn", axis=None),
-                use_container_width=True,
-                height=250,
-            )
+        if rf_metrics:
+            cm_rf = rf_metrics.get("confusion", [[0,0],[0,0]])
+            st.plotly_chart(confusion_matrix_chart(cm_rf, "Random Forest — Confusion Matrix"), use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PAGE 2 — RISK PREDICTOR
+# PAGE 2 — LIVE RISK PREDICTOR (Real-Time Data Pipeline)
 # ═══════════════════════════════════════════════════════════════════════════════
-elif page == "🔮 Risk Predictor":
-    from utils.helpers import risk_gauge, shap_waterfall, get_risk_level, PALETTE
+elif page == "🔮 Live Risk Predictor":
+    from utils.helpers import (
+        dual_risk_gauge, shap_waterfall, get_risk_level,
+        data_source_status_chart, PALETTE
+    )
+    from data.realtime_extractor import RealtimeDataExtractor
 
     st.markdown("""
-    <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 1.2rem 0;'>
-      🔮 Real-Time <span style='color:#FF6B35;'>Risk Prediction</span>
+    <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 0.3rem 0;'>
+      🔮 Live <span style='color:#FF6B35;'>Risk Prediction</span> Pipeline
     </h1>
+    <p style='color:#8B949E; font-size:0.82rem; margin:0 0 1.2rem 0;'>
+      Extracts real-time data from APIs, news sites & govt portals → feeds into both models → shows results
+    </p>
     """, unsafe_allow_html=True)
 
-    with st.form("prediction_form"):
-        st.markdown("<div class='section-header'>📍 Location & Road</div>", unsafe_allow_html=True)
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: lat = st.number_input("Latitude",  min_value=18.5, max_value=24.5, value=21.5, step=0.01)
-        with c2: lon = st.number_input("Longitude", min_value=74.0, max_value=82.0, value=78.5, step=0.01)
-        with c3: road_type = st.selectbox("Road Type", ["highway","rural","forest_road","state_highway","national_highway"])
-        with c4: road_width = st.slider("Road Width (m)", 4, 14, 7)
+    # ── Location & speed inputs ───────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📍 Select Location & Conditions</div>", unsafe_allow_html=True)
 
-        st.markdown("<div class='section-header'>🚗 Traffic & Speed</div>", unsafe_allow_html=True)
-        c5, c6, c7, c8 = st.columns(4)
-        with c5: speed_limit  = st.selectbox("Speed Limit (km/h)", [30, 40, 60, 80, 100], index=2)
-        with c6: actual_speed = st.slider("Actual Speed (km/h)", 10, 140, 65)
-        with c7: curvature    = st.slider("Road Curvature (°/km)", 0, 60, 12)
-        with c8: street_light = st.selectbox("Street Lighting", ["Absent", "Present"])
+    PRESETS = {
+        "Custom Location": (12.0, 76.5),
+        "── South India ──": (11.66, 76.63),
+        "🐯 Bandipur National Park (Karnataka)": (11.66, 76.63),
+        "🐘 Nagarhole / Rajiv Gandhi NP (Karnataka)": (12.05, 76.15),
+        "🦁 Mudumalai Tiger Reserve (Tamil Nadu)": (11.56, 76.55),
+        "🌿 Wayanad Wildlife Sanctuary (Kerala)": (11.60, 76.02),
+        "🐘 Periyar Tiger Reserve (Kerala)": (9.47, 77.17),
+        "🐆 Sathyamangalam TR (Tamil Nadu)": (11.50, 77.25),
+        "🌲 BR Hills Sanctuary (Karnataka)": (11.99, 77.16),
+        "── Central India ──": (22.33, 80.62),
+        "🐯 Kanha National Park (MP)": (22.33, 80.62),
+        "🐘 Tadoba-Andhari Reserve (Maharashtra)": (20.20, 79.35),
+        "🦁 Pench Tiger Reserve (MP)": (21.72, 79.30),
+        "🌲 Satpura Tiger Reserve (MP)": (22.52, 78.12),
+    }
 
-        st.markdown("<div class='section-header'>🕐 Temporal</div>", unsafe_allow_html=True)
-        c9, c10, c11, c12 = st.columns(4)
-        with c9:  hour       = st.slider("Hour of Day", 0, 23, 21)
-        with c10: day_of_week= st.slider("Day (0=Mon)", 0, 6, 4)
-        with c11: season     = st.selectbox("Season", ["summer","monsoon","post_monsoon","winter"])
-        with c12: breeding   = st.selectbox("Breeding Season", ["No","Yes"])
+    c1, c2, c3 = st.columns([1.5, 1, 1])
+    with c1:
+        preset = st.selectbox("Predefined Wildlife Zones", list(PRESETS.keys()))
+    with c2:
+        default_lat, default_lon = PRESETS[preset]
+        lat = st.number_input("Latitude",  min_value=8.0, max_value=25.0, value=default_lat, step=0.01)
+    with c3:
+        lon = st.number_input("Longitude", min_value=74.0, max_value=82.0, value=default_lon, step=0.01)
 
-        st.markdown("<div class='section-header'>🌿 Environment & Wildlife</div>", unsafe_allow_html=True)
-        c13, c14, c15, c16 = st.columns(4)
-        with c13: ndvi         = st.slider("NDVI (Forest Density)", 0.0, 1.0, 0.65)
-        with c14: dist_water   = st.slider("Distance to Water (km)", 0.0, 15.0, 1.5)
-        with c15: rainfall     = st.slider("Rainfall (mm)", 0.0, 100.0, 15.0)
-        with c16: visibility   = st.slider("Visibility (m)", 50, 1000, 600)
+    c4, c5, c6 = st.columns(3)
+    with c4: speed_limit  = st.selectbox("Speed Limit (km/h)", [30, 40, 60, 80, 100], index=2)
+    with c5: actual_speed = st.slider("Actual Speed (km/h)", 10, 140, 65)
+    with c6: past_acc     = st.slider("Past Accident Count", 0, 30, 3)
 
-        c17, c18, c19, c20 = st.columns(4)
-        with c17: species      = st.selectbox("Species", ["tiger","leopard","elephant","deer","boar","wolf","nilgai","sambar"])
-        with c18: corridor_d   = st.slider("Corridor Distance (km)", 0.0, 10.0, 1.0)
-        with c19: protected_d  = st.slider("Protected Area Dist (km)", 0.0, 20.0, 3.0)
-        with c20: temp         = st.slider("Temperature (°C)", 10.0, 45.0, 28.0)
+    run_btn = st.button("⚡ EXTRACT DATA & PREDICT RISK", use_container_width=True)
 
-        c21, c22, c23, c24 = st.columns(4)
-        with c21: humidity    = st.slider("Humidity (%)", 20, 100, 70)
-        with c22: past_acc    = st.slider("Past Accidents (count)", 0, 30, 3)
-        with c23: night_light = st.slider("Nighttime Light (0-255)", 0, 255, 25)
-        with c24: rolling_7d  = st.slider("Rolling 7-Day Trend", 0.0, 20.0, 3.5)
+    if run_btn:
+        # ── RUN THE PIPELINE ──────────────────────────────────────────────────
+        with st.spinner("📡 Extracting real-time data from APIs, news sites & govt portals…"):
+            extractor = RealtimeDataExtractor()
+            feature_df = extractor.extract_all(
+                lat, lon,
+                speed_limit=speed_limit,
+                actual_speed=actual_speed,
+                past_accidents=past_acc,
+            )
+            extraction_log = extractor.get_extraction_log()
+            summary        = extractor.get_extraction_summary()
 
-        submitted = st.form_submit_button("⚡ PREDICT RISK", use_container_width=True)
+        # ── DATA SOURCE STATUS ────────────────────────────────────────────────
+        st.markdown("<div class='section-header'>📡 Real-Time Data Extraction — 7 Sources</div>", unsafe_allow_html=True)
 
-    if submitted:
-        # ── Build input row ──────────────────────────────────────────────────
-        night_flag = int(hour < 6 or hour >= 20)
-        dawn_dusk  = int((5 <= hour <= 7) or (17 <= hour <= 19))
-        rush_hour  = int((6 <= hour <= 9) or (17 <= hour <= 20))
-        speed_ratio= actual_speed / max(speed_limit, 1)
-        street_l   = int(street_light == "Present")
-        breed_flag = int(breeding == "Yes")
+        # Group by source type for display
+        api_sources  = [l for l in extraction_log if l.get('source_type') == 'api']
+        news_sources = [l for l in extraction_log if l.get('source_type') == 'news']
+        govt_sources = [l for l in extraction_log if l.get('source_type') == 'government']
+        comp_sources = [l for l in extraction_log if l.get('source_type') == 'computation']
 
-        ROAD_RISK = {'forest_road':0.90,'rural':0.65,'state_highway':0.55,'highway':0.45,'national_highway':0.40}
-        SPEC_RISK = {'tiger':0.9,'elephant':0.95,'leopard':0.85,'deer':0.60,'boar':0.55,'wolf':0.70,'nilgai':0.50,'sambar':0.65}
-        SEAS_RISK = {'monsoon':0.90,'post_monsoon':0.70,'winter':0.55,'summer':0.40}
+        # Row 1: APIs
+        st.markdown("**🌐 API Sources**", unsafe_allow_html=True)
+        api_cols = st.columns(max(len(api_sources), 1))
+        for i, log_entry in enumerate(api_sources):
+            with api_cols[i]:
+                si = "✅" if log_entry["status"]=="success" else "⚠️"
+                fs = ", ".join(log_entry["features"][:3])
+                st.markdown(f"<div class='source-card'><div class='source-name'>{si} {log_entry['source']}</div><div class='source-url'>{log_entry['api_url'][:70]}…</div><div style='font-size:0.72rem;'><span class='status-{log_entry["status"]}'>{log_entry['status'].upper()}</span> · {log_entry['response_ms']}ms</div><div class='source-features'>→ {fs}</div></div>", unsafe_allow_html=True)
 
-        driver_risk   = speed_ratio * (1 + 0.6 * night_flag) * ROAD_RISK[road_type]
-        move_score    = (0.30*ndvi + 0.25*min(1/(dist_water+0.1),1) +
-                         0.20*dawn_dusk + 0.15*breed_flag + 0.10*(1-night_light/255))
-        kde_density   = past_acc / (corridor_d + 0.5) * 0.4
+        # Row 2: News + Govt
+        ng_col1, ng_col2 = st.columns(2)
+        for col, label, sources in [(ng_col1, "📰 News Websites", news_sources), (ng_col2, "🏛️ Government Portals", govt_sources)]:
+            with col:
+                st.markdown(f"**{label}**")
+                for log_entry in sources:
+                    si = "✅" if log_entry["status"]=="success" else "⚠️"
+                    fs = ", ".join(str(f) for f in log_entry["features"][:3])
+                    st.markdown(f"<div class='source-card'><div class='source-name'>{si} {log_entry['source']}</div><div style='font-size:0.72rem;'><span class='status-{log_entry["status"]}'>{log_entry['status'].upper()}</span> · {log_entry['response_ms']}ms</div><div class='source-features'>→ {fs}</div></div>", unsafe_allow_html=True)
 
-        row = pd.DataFrame([{
-            "ndvi":           ndvi,
-            "dist_water_km":  dist_water,
-            "speed_limit":    speed_limit,
-            "actual_speed":   actual_speed,
-            "hour":           hour,
-            "road_type":      road_type,
-            "rainfall_mm":    rainfall,
-            "visibility_m":   int(visibility),
-            "past_accidents": past_acc,
-            "day_of_week":    day_of_week,
-            "season":         season,
-            "rush_hour":      rush_hour,
-            "movement_score": round(move_score, 4),
-            "kde_density":    round(kde_density, 4),
-            "driver_risk":    round(driver_risk, 4),
-            "corridor_dist_km": corridor_d,
-            "breeding_season":  breed_flag,
-            "species":        species,
-            "species_risk":   SPEC_RISK[species],
-            "night_light":    night_light,
-            "rolling_7day":   rolling_7d,
-            "curvature_deg_km": curvature,
-            "street_lighting":  street_l,
-            "road_width_m":     road_width,
-            "protected_dist_km": protected_d,
-            "temperature_c":    temp,
-            "humidity_pct":     humidity,
-            "night_flag":      night_flag,
-            "dawn_dusk":       dawn_dusk,
-            "speed_ratio":     round(speed_ratio, 3),
-        }])
+        # Row 3: Computations
+        if comp_sources:
+            st.markdown("**🧮 Computed Sources**")
+            comp_cols = st.columns(len(comp_sources))
+            for i, log_entry in enumerate(comp_sources):
+                with comp_cols[i]:
+                    st.markdown(f"<div class='source-card'><div class='source-name'>✅ {log_entry['source']}</div><div style='font-size:0.72rem;'>SUCCESS · {log_entry['response_ms']}ms</div><div class='source-features'>→ {', '.join(log_entry['features'][:4])}</div></div>", unsafe_allow_html=True)
 
-        prob = float(model.predict_risk(row)[0])
-        rl   = get_risk_level(prob)
+        st.plotly_chart(data_source_status_chart(extraction_log), use_container_width=True)
 
-        # ── Results layout ───────────────────────────────────────────────────
-        st.markdown("<br>", unsafe_allow_html=True)
-        r1, r2 = st.columns([1, 1.5])
+        # ── NEWS ARTICLES ─────────────────────────────────────────────────────
+        news_data = None
+        govt_detail = None
+        for log_entry in extraction_log:
+            if log_entry.get('source_type') == 'news':
+                # Get news data from extractor
+                for er in extractor.extraction_log:
+                    if er.source_type == 'news':
+                        news_data = er.data
+            if log_entry.get('source_type') == 'government':
+                for er in extractor.extraction_log:
+                    if er.source_type == 'government':
+                        govt_detail = er.data
+
+        if news_data and news_data.get('top_articles'):
+            st.markdown("<div class='section-header'>📰 Recent Wildlife News from Indian Media</div>", unsafe_allow_html=True)
+            nc1, nc2 = st.columns([1, 1])
+            with nc1:
+                st.markdown(f"<div class='metric-card'><h3>Wildlife Articles Found</h3><div class='value' style='font-size:1.4rem;'>{news_data.get('total_wildlife_articles',0)}</div><div class='sub'>From The Hindu, NDTV, Down to Earth, Google News</div></div>", unsafe_allow_html=True)
+            with nc2:
+                st.markdown(f"<div class='metric-card'><h3>South India Mentions</h3><div class='value' style='font-size:1.4rem;'>{news_data.get('south_india_articles',0)}</div><div class='sub'>Matching Karnataka, Kerala, Tamil Nadu</div></div>", unsafe_allow_html=True)
+            for art in news_data['top_articles'][:5]:
+                si_tag = " 🟢 South India" if art.get('south_india_match') else ""
+                sp_tag = f" | Species: {', '.join(art.get('species_mentioned',[])) }" if art.get('species_mentioned') else ""
+                st.markdown(f"- **[{art['source']}]** {art['title']}{si_tag}{sp_tag}")
+
+        if govt_detail:
+            st.markdown("<div class='section-header'>🏛️ Indian Government Portal Status</div>", unsafe_allow_html=True)
+            gs = govt_detail.get('source_status', {})
+            gc1, gc2 = st.columns(2)
+            with gc1:
+                for name, status in list(gs.items())[:4]:
+                    st.markdown(f"- **{name}**: {status}")
+            with gc2:
+                for name, status in list(gs.items())[4:]:
+                    st.markdown(f"- **{name}**: {status}")
+            st.markdown(f"📍 **Nearest State Dept**: {govt_detail.get('nearest_state_dept','')} ({govt_detail.get('nearest_state_url','')})")
+
+        # ── PREDICTION RESULTS ────────────────────────────────────────────────
+        st.markdown("<div class='section-header'>🤖 Dual-Model Prediction Results</div>", unsafe_allow_html=True)
+
+        if model.rf_model is not None:
+            results = model.predict_both(feature_df)
+            xgb_prob = results["xgb_probability"]
+            rf_prob  = results["rf_probability"]
+            avg_prob = results["avg_probability"]
+            agree    = results["agreement"]
+        else:
+            xgb_prob = float(model.predict_risk(feature_df)[0])
+            rf_prob  = xgb_prob
+            avg_prob = xgb_prob
+            agree    = True
+
+        rl_xgb = get_risk_level(xgb_prob)
+        rl_rf  = get_risk_level(rf_prob)
+        rl_avg = get_risk_level(avg_prob)
+
+        # Gauges
+        st.plotly_chart(dual_risk_gauge(xgb_prob, rf_prob), use_container_width=True)
+
+        # Risk badges
+        r1, r2, r3 = st.columns(3)
         with r1:
-            st.plotly_chart(risk_gauge(prob), use_container_width=True)
             st.markdown(f"""
-            <div style='text-align:center; margin-top:-1rem;'>
-              <span class='risk-badge' style='background:{rl["color"]}33; color:{rl["color"]}; border:1.5px solid {rl["color"]};'>
-                {rl["emoji"]} {rl["label"]} Risk — {prob:.1%}
+            <div style='text-align:center;'>
+              <span class='risk-badge' style='background:{rl_xgb["color"]}33; color:{rl_xgb["color"]}; border:1.5px solid {rl_xgb["color"]};'>
+                {rl_xgb["emoji"]} XGBoost: {xgb_prob:.1%}
               </span>
-            </div>
-            """, unsafe_allow_html=True)
-
+            </div>""", unsafe_allow_html=True)
         with r2:
-            try:
-                sv, X_in, base = model.predict_shap(row)
-                sv_flat = sv[0] if sv.ndim == 2 else sv
-                st.plotly_chart(
-                    shap_waterfall(sv_flat, model.feature_cols,
-                                   X_in.iloc[0].values, base),
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.warning(f"SHAP explanation unavailable: {e}")
+            st.markdown(f"""
+            <div style='text-align:center;'>
+              <span class='risk-badge' style='background:{rl_rf["color"]}33; color:{rl_rf["color"]}; border:1.5px solid {rl_rf["color"]};'>
+                {rl_rf["emoji"]} Random Forest: {rf_prob:.1%}
+              </span>
+            </div>""", unsafe_allow_html=True)
+        with r3:
+            agree_str = "✅ Models Agree" if agree else "⚠️ Divergence Detected"
+            st.markdown(f"""
+            <div style='text-align:center;'>
+              <span class='risk-badge' style='background:{rl_avg["color"]}33; color:{rl_avg["color"]}; border:1.5px solid {rl_avg["color"]};'>
+                {rl_avg["emoji"]} Ensemble: {avg_prob:.1%} · {agree_str}
+              </span>
+            </div>""", unsafe_allow_html=True)
+
+        # ── SHAP explanation ──────────────────────────────────────────────────
+        st.markdown("<div class='section-header'>🔬 SHAP Explanation (XGBoost)</div>", unsafe_allow_html=True)
+        try:
+            sv, X_in, base = model.predict_shap(feature_df)
+            sv_flat = sv[0] if sv.ndim == 2 else sv
+            st.plotly_chart(
+                shap_waterfall(sv_flat, model.feature_cols,
+                               X_in.iloc[0].values, base),
+                use_container_width=True
+            )
+        except Exception as e:
+            st.warning(f"SHAP explanation unavailable: {e}")
+
+        # ── Extracted feature table ───────────────────────────────────────────
+        st.markdown("<div class='section-header'>📋 Extracted Feature Vector</div>", unsafe_allow_html=True)
+        feat_display = feature_df.T.reset_index()
+        feat_display.columns = ["Feature", "Value"]
+        st.dataframe(feat_display, use_container_width=True, height=400)
 
         # ── Recommendations ──────────────────────────────────────────────────
         st.markdown("<div class='section-header'>🛡 Mitigation Recommendations</div>", unsafe_allow_html=True)
         recs = []
-        if night_flag:      recs.append("🌙 **Nocturnal alert zone** — deploy flashing warning signs between 20:00–06:00")
-        if ndvi > 0.6:      recs.append("🌲 **High vegetation corridor** — install wildlife detection sensors")
-        if dist_water < 1:  recs.append("💧 **Water source proximity** — install water crossing structures / underpasses")
-        if speed_ratio > 1.1: recs.append("🚗 **Over-speed detected** — enforce speed cameras and lower limit")
-        if rainfall > 30:   recs.append("🌧 **Low visibility conditions** — dynamic variable speed limits")
-        if breed_flag:      recs.append("🔥 **Breeding season** — temporary speed restrictions May–October")
-        if corridor_d < 1:  recs.append("🗺 **Corridor proximity** — install wildlife fencing and crossing")
-        if not recs:        recs.append("✅ Risk factors within acceptable range — standard monitoring advised")
+        row = feature_df.iloc[0]
+        if row.get("night_flag", 0):     recs.append("🌙 **Nocturnal alert zone** — deploy flashing warning signs between 20:00–06:00")
+        if row.get("ndvi", 0) > 0.6:    recs.append("🌲 **High vegetation corridor** — install wildlife detection sensors")
+        if row.get("dist_water_km", 99) < 1: recs.append("💧 **Water source proximity** — install water crossing structures / underpasses")
+        if row.get("speed_ratio", 0) > 1.1:  recs.append("🚗 **Over-speed detected** — enforce speed cameras and lower limit")
+        if row.get("rainfall_mm", 0) > 30:   recs.append("🌧 **Low visibility conditions** — dynamic variable speed limits")
+        if row.get("breeding_season", 0):     recs.append("🔥 **Breeding season** — temporary speed restrictions May–October")
+        if row.get("corridor_dist_km", 99) < 2: recs.append("🗺 **Corridor proximity** — install wildlife fencing and crossing")
+        if not recs: recs.append("✅ Risk factors within acceptable range — standard monitoring advised")
         for rec in recs:
             st.markdown(f"- {rec}")
+
+        # ── Data source detail expanders ──────────────────────────────────────
+        st.markdown("<div class='section-header'>📡 Detailed Data Source Logs</div>", unsafe_allow_html=True)
+        for log_entry in extraction_log:
+            status_icon = "✅" if log_entry["status"] == "success" else "⚠️" if log_entry["status"] == "fallback" else "❌"
+            with st.expander(f"{status_icon} {log_entry['source']}  —  {log_entry['response_ms']}ms"):
+                st.markdown(f"**API URL:** `{log_entry['api_url']}`")
+                st.markdown(f"**Description:** {log_entry['description']}")
+                st.markdown(f"**Status:** `{log_entry['status']}`")
+                st.markdown(f"**Timestamp:** `{log_entry['timestamp']}`")
+                st.markdown(f"**Features extracted:** {', '.join(log_entry['features'])}")
+                if log_entry["error"]:
+                    st.error(f"Error: {log_entry['error']}")
+                if log_entry["raw_preview"]:
+                    st.code(log_entry["raw_preview"], language="json")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -434,7 +581,6 @@ elif page == "🗺 Risk Map":
     </p>
     """, unsafe_allow_html=True)
 
-    # Filter controls
     fc1, fc2, fc3 = st.columns(3)
     with fc1: f_season  = st.multiselect("Filter Season", df["season"].unique().tolist(), default=df["season"].unique().tolist())
     with fc2: f_species = st.multiselect("Filter Species", df["species"].unique().tolist(), default=df["species"].unique().tolist())
@@ -486,10 +632,11 @@ elif page == "📊 Analytics":
         "🕐 Temporal", "🌿 Environmental", "🚗 Traffic", "🦁 Wildlife", "📉 Historical"
     ])
 
+    _AX = dict(gridcolor=PALETTE["border"], zerolinecolor=PALETTE["border"])
+
     with tab1:
         col1, col2 = st.columns(2)
         with col1:
-            # Heatmap: hour × day
             pivot_hd = df.pivot_table(index="hour", columns="day_of_week",
                                       values="accident", aggfunc="mean")
             days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
@@ -593,8 +740,12 @@ elif page == "📊 Analytics":
 # PAGE 5 — MODEL INSIGHTS
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "🧠 Model Insights":
-    from utils.helpers import feature_importance_chart, confusion_matrix_chart, PALETTE, PLOTLY_LAYOUT
-    import shap as shap_lib
+    from utils.helpers import (
+        feature_importance_chart, rf_importance_chart,
+        confusion_matrix_chart, model_comparison_chart,
+        roc_comparison_chart, PALETTE, PLOTLY_LAYOUT
+    )
+    from models.train import FEATURE_GROUPS
 
     st.markdown("""
     <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 1.2rem 0;'>
@@ -602,41 +753,71 @@ elif page == "🧠 Model Insights":
     </h1>
     """, unsafe_allow_html=True)
 
-    tab_a, tab_b, tab_c, tab_d = st.tabs([
-        "📈 Performance", "🔬 SHAP Importance", "📊 SHAP Beeswarm", "⚙️ Feature Groups"
+    _AX = dict(gridcolor=PALETTE["border"], zerolinecolor=PALETTE["border"])
+
+    tab_a, tab_b, tab_c, tab_d, tab_e = st.tabs([
+        "📈 Performance", "🔬 XGBoost SHAP", "🌲 RF Importance",
+        "📊 SHAP Beeswarm", "⚙️ Feature Groups"
     ])
 
     with tab_a:
-        c1, c2, c3, c4 = st.columns(4)
+        # ── Metric cards ──────────────────────────────────────────────────────
+        st.markdown("<div class='section-header'>XGBoost Metrics</div>", unsafe_allow_html=True)
+        xc1, xc2, xc3, xc4, xc5 = st.columns(5)
         for col, k, label in [
-            (c1, "roc_auc",      "ROC-AUC"),
-            (c2, "avg_precision","Avg Precision"),
-            (c3, "accuracy",     "Accuracy"),
-            (c4, "brier_score",  "Brier Score"),
+            (xc1, "roc_auc",       "ROC-AUC"),
+            (xc2, "avg_precision", "Avg Precision"),
+            (xc3, "accuracy",      "Accuracy"),
+            (xc4, "brier_score",   "Brier Score"),
+            (xc5, "cv_roc_auc_mean", "CV AUC (5-fold)"),
         ]:
+            v = xgb_metrics.get(k, 0)
             with col:
-                v = metrics.get(k, 0)
                 st.markdown(f"""
                 <div class='metric-card'>
                   <h3>{label}</h3>
-                  <div class='value'>{v:.4f}</div>
+                  <div class='value' style='font-size:1.5rem;'>{v:.4f}</div>
                 </div>""", unsafe_allow_html=True)
 
+        if rf_metrics:
+            st.markdown("<div class='section-header'>Random Forest Metrics</div>", unsafe_allow_html=True)
+            rc1, rc2, rc3, rc4, rc5 = st.columns(5)
+            for col, k, label in [
+                (rc1, "roc_auc",       "ROC-AUC"),
+                (rc2, "avg_precision", "Avg Precision"),
+                (rc3, "accuracy",      "Accuracy"),
+                (rc4, "brier_score",   "Brier Score"),
+                (rc5, "cv_roc_auc_mean", "CV AUC (5-fold)"),
+            ]:
+                v = rf_metrics.get(k, 0)
+                with col:
+                    st.markdown(f"""
+                    <div class='metric-card'>
+                      <h3>{label}</h3>
+                      <div class='value' style='font-size:1.5rem; color:#58A6FF;'>{v:.4f}</div>
+                    </div>""", unsafe_allow_html=True)
+
         st.markdown("<br>", unsafe_allow_html=True)
-        cm_col, tr_col = st.columns(2)
-        with cm_col:
-            cm = metrics.get("confusion", [[0,0],[0,0]])
-            st.plotly_chart(confusion_matrix_chart(cm), use_container_width=True)
-        with tr_col:
-            # Learning curve proxy
-            n_est = metrics.get("best_iteration", 300)
-            x     = list(range(1, n_est+1, max(1, n_est//100)))
-            auc_curve = [0.5 + (metrics.get("roc_auc",0.9)-0.5)*(1-np.exp(-0.015*i)) for i in x]
-            fig_lc = go.Figure()
-            fig_lc.add_trace(go.Scatter(x=x, y=auc_curve, mode="lines",
-                                        line=dict(color=PALETTE["accent2"], width=2), name="Train AUC"))
-            fig_lc.update_layout(**PLOTLY_LAYOUT, title="Learning Curve (AUC)", height=320)
-            st.plotly_chart(fig_lc, use_container_width=True)
+        cmp1, cmp2 = st.columns(2)
+        with cmp1:
+            if rf_metrics:
+                st.plotly_chart(model_comparison_chart(xgb_metrics, rf_metrics), use_container_width=True)
+        with cmp2:
+            if rf_metrics:
+                st.plotly_chart(roc_comparison_chart(xgb_metrics, rf_metrics), use_container_width=True)
+
+        # Confusion matrices
+        st.markdown("<br>", unsafe_allow_html=True)
+        cm1, cm2 = st.columns(2)
+        with cm1:
+            st.plotly_chart(confusion_matrix_chart(
+                xgb_metrics.get("confusion", [[0,0],[0,0]]), "XGBoost Confusion Matrix"
+            ), use_container_width=True)
+        with cm2:
+            if rf_metrics:
+                st.plotly_chart(confusion_matrix_chart(
+                    rf_metrics.get("confusion", [[0,0],[0,0]]), "RF Confusion Matrix"
+                ), use_container_width=True)
 
     with tab_b:
         if shap_imp:
@@ -645,12 +826,17 @@ elif page == "🧠 Model Insights":
             st.info("SHAP importance not available.")
 
     with tab_c:
+        if rf_imp:
+            st.plotly_chart(rf_importance_chart(rf_imp), use_container_width=True)
+        else:
+            st.info("Random Forest importance not available. Retrain the models.")
+
+    with tab_d:
         st.markdown("<div class='section-header'>SHAP Beeswarm — Global Feature Impact</div>",
                     unsafe_allow_html=True)
         sv  = model.shap_values
         ssp = model.shap_sample
         if sv is not None and ssp is not None:
-            # Manual beeswarm using Plotly
             top_n    = 15
             top_feat = [x["feature"] for x in sorted(shap_imp, key=lambda x: x["shap_mean"], reverse=True)[:top_n]]
             idxs     = [model.feature_cols.index(f) for f in top_feat if f in model.feature_cols]
@@ -659,7 +845,6 @@ elif page == "🧠 Model Insights":
             for rank, (fi, fname) in enumerate(zip(idxs, top_feat)):
                 fv = ssp.iloc[:, fi].values
                 fv_norm = (fv - fv.min()) / ((fv.max() - fv.min()) + 1e-9)
-                colors  = [f"hsl({int(v*240)},80%,55%)" for v in fv_norm]
                 jitter  = np.random.uniform(-0.25, 0.25, len(sv))
                 traces.append(go.Scatter(
                     x    = sv[:, fi],
@@ -686,8 +871,7 @@ elif page == "🧠 Model Insights":
             fig_bs.add_vline(x=0, line_color=PALETTE["muted"], line_width=1.5)
             st.plotly_chart(fig_bs, use_container_width=True)
 
-    with tab_d:
-        from models.train import FEATURE_GROUPS
+    with tab_e:
         st.markdown("<div class='section-header'>Feature Group Importance</div>", unsafe_allow_html=True)
         shap_dict = {x["feature"]: x["shap_mean"] for x in shap_imp}
         group_totals = {}
@@ -715,3 +899,218 @@ elif page == "🧠 Model Insights":
                 use_container_width=True,
                 height=500,
             )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 6 — DATA SOURCES
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "📡 Data Sources":
+    from utils.helpers import PALETTE
+
+    st.markdown("""
+    <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 0.3rem 0;'>
+      📡 Data <span style='color:#FF6B35;'>Sources & Attribution</span>
+    </h1>
+    <p style='color:#8B949E; font-size:0.82rem; margin:0 0 1.5rem 0;'>
+      Where and how the WildGuard AI system extracts real-time data
+    </p>
+    """, unsafe_allow_html=True)
+
+    sources = [
+        {
+            "name": "Open-Meteo Weather API",
+            "icon": "🌦️",
+            "url": "https://api.open-meteo.com/v1/forecast",
+            "description": "Free, open-source weather API providing real-time meteorological data. No API key required.",
+            "license": "CC BY 4.0 — Open Source",
+            "features": ["temperature_c", "humidity_pct", "rainfall_mm", "visibility_m (from WMO weather codes)", "wind_speed", "cloud_cover"],
+            "how": "HTTP GET request with latitude/longitude parameters. Returns JSON with current weather observations. "
+                   "Visibility is estimated from WMO weather codes (fog → 100-200m, clear → 900-1000m, rain → 400-700m).",
+            "rate_limit": "No registration needed. 10,000 requests/day.",
+            "color": "#58A6FF",
+        },
+        {
+            "name": "OpenStreetMap Overpass API",
+            "icon": "🗺️",
+            "url": "https://overpass-api.de/api/interpreter",
+            "description": "Queries the OpenStreetMap database for geographic features near the target location. "
+                           "Returns road types, width, lighting, and water body proximity.",
+            "license": "ODbL — Open Data Commons Open Database License",
+            "features": ["road_type (mapped from OSM highway tag)", "road_width_m", "street_lighting",
+                          "dist_water_km (Haversine distance to nearest water body)"],
+            "how": "POST request with Overpass QL query. Searches within 1.5 km radius for highway=* ways and "
+                   "natural=water / waterway nodes/ways. OSM highway types are mapped to model categories "
+                   "(motorway→national_highway, track→forest_road, etc.).",
+            "rate_limit": "Public endpoint. Max 2 requests/second, 10,000/day.",
+            "color": "#06D6A0",
+        },
+        {
+            "name": "GBIF Biodiversity API",
+            "icon": "🦁",
+            "url": "https://api.gbif.org/v1/occurrence/search",
+            "description": "Global Biodiversity Information Facility — the world's largest open biodiversity database. "
+                           "Searches for mammal occurrence records reported near the target coordinates.",
+            "license": "CC BY 4.0 — GBIF.org Data Use Agreement",
+            "features": ["species (dominant mammal in area)", "species_risk (mapped from species ID)",
+                          "total_sightings", "biodiversity_index"],
+            "how": "HTTP GET request filtered by Mammalia class (classKey=359), ±0.5° lat/lon bounding box. "
+                   "Returns up to 300 occurrence records. Species names are matched against our risk mapping "
+                   "(tiger=0.9, elephant=0.95, deer=0.6, etc.). Most frequent match becomes the dominant species.",
+            "rate_limit": "No API key required. Rate-limited to 3 requests/second.",
+            "color": "#FFD166",
+        },
+        {
+            "name": "System Clock (Temporal Features)",
+            "icon": "🕐",
+            "url": "Python datetime.now()",
+            "description": "Derives all temporal features from the current system time. "
+                           "Indian seasonal calendar is applied (Mar-May=summer, Jun-Sep=monsoon, Oct-Nov=post_monsoon, Dec-Feb=winter).",
+            "license": "N/A — Local computation",
+            "features": ["hour", "day_of_week", "season", "night_flag (20:00–06:00)",
+                          "dawn_dusk (05:00–07:00 / 17:00–19:00)", "rush_hour (06:00–09:00 / 17:00–20:00)",
+                          "breeding_season (monsoon + post_monsoon)"],
+            "how": "Python's datetime module provides the current local time. Boolean flags are computed for "
+                   "nighttime, dawn/dusk (peak wildlife crossing periods), rush hour, and breeding season.",
+            "rate_limit": "N/A — Instantaneous",
+            "color": "#BC8CF2",
+        },
+        {
+            "name": "GIS Computation Engine",
+            "icon": "🌍",
+            "url": "Haversine distance + NDVI estimation",
+            "description": "Computes geographical features using a database of 21 protected areas "
+                           "(14 South India + 7 Central India) and 11 wildlife corridors.",
+            "license": "N/A — Local computation with openly sourced coordinates",
+            "features": ["protected_dist_km (nearest tiger reserve/national park)",
+                          "corridor_dist_km (nearest wildlife corridor)",
+                          "ndvi (estimated from season + proximity to protected areas)",
+                          "night_light (urbanization proxy from corridor distance)"],
+            "how": "Haversine formula computes great-circle distance from the query point to each protected area "
+                   "and corridor in our database. South India reserves include Bandipur, Nagarhole, Mudumalai, "
+                   "Wayanad, Periyar, Sathyamangalam, BR Hills, Anamalai, Parambikulam, and more.",
+            "rate_limit": "N/A — < 1ms computation",
+            "color": "#FF6B35",
+        },
+        {
+            "name": "News Websites (RSS Aggregator)",
+            "icon": "📰",
+            "url": "The Hindu | NDTV | Down to Earth | Google News RSS",
+            "description": "Scrapes wildlife-vehicle collision news from major Indian news sources via RSS feeds. "
+                           "Searches for recent reports of animal-road incidents, with special focus on South India "
+                           "(Karnataka, Kerala, Tamil Nadu, Western Ghats). Extracts species mentions and regional tags.",
+            "license": "RSS / Public Access — Editorial content",
+            "features": ["total_wildlife_articles (count of matching news articles)",
+                          "south_india_articles (count with South India mentions)",
+                          "species_in_news (species cited in recent reports)",
+                          "news_risk_modifier (risk boost from recent incidents)"],
+            "how": "HTTP GET requests to RSS feed URLs for The Hindu (thehindu.com/sci-tech/energy-and-environment), "
+                   "NDTV (feeds.feedburner.com/ndtv/environment-news), Down to Earth (downtoearth.org.in/rss/wildlife), "
+                   "and Google News (news.google.com/rss/search?q=wildlife+animal+road+accident+India). "
+                   "XML parsed with Python's xml.etree.ElementTree. Articles are filtered by wildlife keywords "
+                   "(elephant, tiger, roadkill, corridor, etc.) and checked for South India state mentions.",
+            "rate_limit": "No auth needed. 4 RSS feeds fetched in parallel.",
+            "color": "#EF476F",
+        },
+        {
+            "name": "Indian Government Wildlife Portals",
+            "icon": "🏛️",
+            "url": "NTCA | State Forest Depts | MoEFCC | WII | MoRTH | India Biodiversity Portal",
+            "description": "Checks accessibility and scrapes wildlife/conservation references from official Indian "
+                           "government portals. Includes the National Tiger Conservation Authority (NTCA), "
+                           "state forest departments (Karnataka aranya.gov.in, Kerala forest.kerala.gov.in, "
+                           "Tamil Nadu forests.tn.gov.in), Ministry of Environment (MoEFCC), Wildlife Institute of India (WII), "
+                           "Ministry of Road Transport (MoRTH), and India Biodiversity Portal.",
+            "license": "Government of India — Public Access",
+            "features": ["govt_sources_accessible (count of reachable portals out of 6+)",
+                          "conservation_intensity (tiger/corridor reference density from NTCA)",
+                          "active_alerts (whether state forest dept has wildlife advisories)",
+                          "nearest_state_dept (auto-detected based on location)"],
+            "how": "HTTP GET requests to each government URL. HTML content is scanned with regex for wildlife, corridor, "
+                   "tiger, elephant, alert, and advisory references. The nearest state forest department is auto-selected "
+                   "based on the query coordinates (e.g., Bandipur → Karnataka Forest Dept at aranya.gov.in). "
+                   "MoRTH is checked for road accident/safety references. India Biodiversity Portal is queried for observations.",
+            "rate_limit": "Public access. 6-8 government sites checked per request.",
+            "color": "#B5179E",
+        },
+    ]
+
+    for src in sources:
+        st.markdown(f"""
+        <div class='source-card' style='border-left: 3px solid {src["color"]};'>
+          <div style='display:flex; justify-content:space-between; align-items:center;'>
+            <div class='source-name' style='color:{src["color"]}; font-size:1rem;'>
+              {src["icon"]}  {src["name"]}
+            </div>
+            <span style='font-size:0.65rem; color:var(--muted); background:var(--bg);
+                          padding:0.2rem 0.6rem; border-radius:4px;'>{src["license"]}</span>
+          </div>
+          <div style='font-size:0.8rem; color:var(--text); margin:0.5rem 0;'>{src["description"]}</div>
+          <div class='source-url' style='margin:0.4rem 0;'>
+            <code style='background:var(--bg); padding:0.2rem 0.5rem; border-radius:4px; font-size:0.7rem;'>
+              {src["url"]}
+            </code>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_feat, col_how = st.columns([1, 1.5])
+        with col_feat:
+            st.markdown("**Features Extracted:**")
+            for feat in src["features"]:
+                st.markdown(f"- `{feat}`")
+        with col_how:
+            st.markdown("**How It Works:**")
+            st.markdown(src["how"])
+            st.markdown(f"**Rate Limit:** {src['rate_limit']}")
+
+        st.markdown("---")
+
+    # ── Pipeline diagram ──────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🔄 Pipeline Architecture (7 Sources)</div>", unsafe_allow_html=True)
+    st.markdown("""
+    ```
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                  REAL-TIME DATA PIPELINE (v3.0)                     │
+    │           7 Sources · 30+ Features · 2 Models · Ensemble           │
+    ├─────────────────────────────────────────────────────────────────────┤
+    │                                                                     │
+    │   📍 User selects location (lat/lon) + speed conditions            │
+    │         │                                                           │
+    │  ┌──── APIs ────────────────────────────────────────────────┐      │
+    │  │      ├──→ 🌦️ Open-Meteo API     ──→ weather features   │      │
+    │  │      ├──→ 🗺️ Overpass API        ──→ road + water      │      │
+    │  │      └──→ 🦁 GBIF API            ──→ wildlife species   │      │
+    │  └──────────────────────────────────────────────────────────┘      │
+    │  ┌──── News & Government ───────────────────────────────────┐      │
+    │  │      ├──→ 📰 News RSS            ──→ incident intelligence│     │
+    │  │      │    (The Hindu, NDTV, Down to Earth, Google News)  │      │
+    │  │      └──→ 🏛️ Govt Portals        ──→ conservation data  │      │
+    │  │           (NTCA, Forest Depts, MoEFCC, WII, MoRTH)      │      │
+    │  └──────────────────────────────────────────────────────────┘      │
+    │  ┌──── Computation ─────────────────────────────────────────┐      │
+    │  │      ├──→ 🕐 System Clock        ──→ temporal features   │      │
+    │  │      └──→ 🌍 GIS Engine          ──→ spatial features    │      │
+    │  │           (21 PAs + 11 corridors, South + Central India) │      │
+    │  └──────────────────────────────────────────────────────────┘      │
+    │                   │                                                 │
+    │                   ▼                                                 │
+    │         ┌─────────────────┐                                        │
+    │         │ Feature Vector  │  (30+ features combined)               │
+    │         └────────┬────────┘                                        │
+    │                  │                                                  │
+    │         ┌────────┴────────┐                                        │
+    │         ▼                 ▼                                         │
+    │   ┌──────────┐    ┌──────────────┐                                │
+    │   │ XGBoost  │    │ Random Forest│                                │
+    │   │ (SHAP)   │    │ (Gini)       │                                │
+    │   └────┬─────┘    └──────┬───────┘                                │
+    │        └────────┬────────┘                                         │
+    │                 ▼                                                   │
+    │       ┌─────────────────┐                                          │
+    │       │ Ensemble Result │                                          │
+    │       │ + SHAP Waterfall│                                          │
+    │       │ + Recommendations│                                         │
+    │       └─────────────────┘                                          │
+    └─────────────────────────────────────────────────────────────────────┘
+    ```
+    """)
