@@ -23,174 +23,378 @@ st.set_page_config(
     initial_sidebar_state = "expanded",
 )
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# ── Custom CSS — Palantir Foundry Aesthetic ───────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Sora:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --bg:       #0D1117;
-  --surface:  #161B22;
-  --border:   #30363D;
-  --orange:   #FF6B35;
-  --teal:     #00D4AA;
-  --amber:    #FFD166;
-  --blue:     #58A6FF;
-  --purple:   #BC8CF2;
-  --low:      #06D6A0;
-  --med:      #FFD166;
-  --high:     #EF476F;
-  --crit:     #B5179E;
-  --text:     #E6EDF3;
-  --muted:    #8B949E;
+  --bg:         #060a10;
+  --bg-alt:     #0a0f18;
+  --surface:    #0d1320;
+  --surface-2:  #111827;
+  --border:     #1a2332;
+  --border-hi:  #243044;
+  --cyan:       #00e5ff;
+  --cyan-dim:   #0091a3;
+  --cyan-glow:  rgba(0,229,255,0.12);
+  --amber:      #ffb020;
+  --amber-dim:  #a67400;
+  --red:        #ff3d5a;
+  --red-dim:    #8b1a2b;
+  --green:      #00e676;
+  --green-dim:  #007a3d;
+  --blue:       #4da6ff;
+  --purple:     #9d7aff;
+  --orange:     #ff7043;
+  --low:        #00e676;
+  --med:        #ffb020;
+  --high:       #ff3d5a;
+  --crit:       #d500f9;
+  --text:       #c8d6e5;
+  --text-hi:    #e8f0fa;
+  --muted:      #5a6d82;
+  --muted-lo:   #3a4a5c;
 }
 
+/* ─── Base ─────────────────────────────────────────────────────────────── */
 html, body, .stApp {
-  background-color: var(--bg) !important;
+  background: var(--bg) !important;
   color: var(--text) !important;
-  font-family: 'Sora', sans-serif;
+  font-family: 'Inter', -apple-system, sans-serif;
+}
+
+/* Subtle scanline overlay */
+.stApp::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background:
+    repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,0.008) 2px, rgba(0,229,255,0.008) 4px);
+  pointer-events: none;
+  z-index: 0;
 }
 
 #MainMenu, footer, header { visibility: hidden; }
-.block-container { padding: 1.5rem 2rem !important; max-width: 100% !important; }
+.block-container { padding: 1.2rem 1.8rem !important; max-width: 100% !important; }
 
+/* ─── Keyframes ─────────────────────────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+@keyframes scan-line {
+  0% { top: -2px; }
+  100% { top: 100%; }
+}
+@keyframes data-fade-in {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes border-pulse {
+  0%, 100% { border-color: var(--border); }
+  50% { border-color: var(--border-hi); }
+}
+
+/* ─── HUD Metric Cards ─────────────────────────────────────────────── */
 .metric-card {
-  background: var(--surface);
+  position: relative;
+  background: linear-gradient(145deg, var(--surface), var(--bg-alt));
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.2rem 1.5rem;
-  margin: 0.3rem 0;
+  padding: 1rem 1.2rem;
+  margin: 0.25rem 0;
+  animation: data-fade-in 0.4s ease-out;
+  overflow: hidden;
+}
+/* Corner brackets — HUD style */
+.metric-card::before, .metric-card::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: var(--cyan);
+  border-style: solid;
+}
+.metric-card::before {
+  top: 0; left: 0;
+  border-width: 1px 0 0 1px;
+}
+.metric-card::after {
+  bottom: 0; right: 0;
+  border-width: 0 1px 1px 0;
 }
 .metric-card h3 {
-  font-family: 'Space Mono', monospace;
-  font-size: 0.72rem;
-  color: var(--muted);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  margin: 0 0 0.4rem 0;
-}
-.metric-card .value {
-  font-family: 'Space Mono', monospace;
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--orange);
-  line-height: 1;
-}
-.metric-card .sub {
-  font-size: 0.78rem;
-  color: var(--muted);
-  margin-top: 0.3rem;
-}
-
-.risk-badge {
-  display: inline-block;
-  padding: 0.3rem 1rem;
-  border-radius: 999px;
-  font-family: 'Space Mono', monospace;
-  font-weight: 700;
-  font-size: 1rem;
-  letter-spacing: 0.05em;
-}
-
-.section-header {
-  font-family: 'Space Mono', monospace;
-  font-size: 0.7rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
   color: var(--muted);
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.5rem;
-  margin: 1.2rem 0 0.8rem 0;
+  margin: 0 0 0.5rem 0;
+  font-weight: 500;
+}
+.metric-card .value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--cyan);
+  line-height: 1;
+  text-shadow: 0 0 20px rgba(0,229,255,0.2);
+}
+.metric-card .sub {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--muted);
+  margin-top: 0.4rem;
+  letter-spacing: 0.05em;
 }
 
+/* ─── Risk Badge ───────────────────────────────────────────────────── */
+.risk-badge {
+  display: inline-block;
+  padding: 0.25rem 0.8rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  border: 1px solid;
+  text-transform: uppercase;
+}
+
+/* ─── Section Headers — Classified Document Style ─────────────────── */
+.section-header {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--cyan-dim);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.4rem;
+  margin: 1.5rem 0 0.7rem 0;
+  position: relative;
+}
+.section-header::before {
+  content: '▸';
+  margin-right: 0.5rem;
+  color: var(--cyan);
+}
+
+/* ─── Source Cards ──────────────────────────────────────────────────── */
 .source-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem 1.2rem;
-  margin: 0.5rem 0;
+  padding: 0.9rem 1.1rem;
+  margin: 0.4rem 0;
+  position: relative;
+}
+.source-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--cyan);
 }
 .source-card .source-name {
-  font-family: 'Space Mono', monospace;
-  font-size: 0.85rem;
-  font-weight: 700;
-  margin-bottom: 0.3rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-hi);
+  margin-bottom: 0.2rem;
 }
 .source-card .source-url {
-  font-size: 0.7rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
   color: var(--muted);
   word-break: break-all;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.3rem;
 }
 .source-card .source-features {
-  font-size: 0.75rem;
-  color: var(--teal);
+  font-size: 0.68rem;
+  color: var(--cyan);
+  font-family: 'IBM Plex Mono', monospace;
 }
-.status-success { color: var(--teal); }
+.status-success { color: var(--green); }
 .status-fallback { color: var(--amber); }
-.status-error { color: var(--high); }
+.status-error { color: var(--red); }
 
+/* ─── Sidebar — Dark Ops Panel ─────────────────────────────────────── */
 [data-testid="stSidebar"] {
-  background: var(--surface) !important;
-  border-right: 1px solid var(--border);
+  background: linear-gradient(180deg, #060a10 0%, #0a0f18 100%) !important;
+  border-right: 1px solid var(--border) !important;
+}
+[data-testid="stSidebar"]::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--cyan-dim), transparent);
 }
 [data-testid="stSidebar"] .stSelectbox label,
 [data-testid="stSidebar"] .stSlider label,
 [data-testid="stSidebar"] p {
   color: var(--text) !important;
-  font-size: 0.82rem !important;
+  font-size: 0.78rem !important;
+  font-family: 'IBM Plex Mono', monospace !important;
 }
 
-.stSelectbox > div > div { background: var(--bg) !important; border-color: var(--border) !important; }
-.stSlider [data-baseweb="slider"] { background: var(--border) !important; }
-.stTabs [data-baseweb="tab-list"] { background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
-.stTabs [data-baseweb="tab"] { color: var(--muted) !important; font-family: 'Space Mono', monospace; font-size: 0.75rem; }
-.stTabs [aria-selected="true"] { color: var(--orange) !important; border-bottom: 2px solid var(--orange) !important; }
-.stButton > button {
-  background: var(--orange) !important;
-  color: white !important;
-  border: none !important;
-  font-family: 'Space Mono', monospace !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.05em !important;
-  border-radius: 8px !important;
-  padding: 0.6rem 2rem !important;
-  transition: all 0.2s !important;
+/* Navigation radio items */
+[data-testid="stSidebar"] .stRadio label {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.04em !important;
+  color: var(--text) !important;
+  padding: 0.35rem 0 !important;
+  transition: all 0.15s ease !important;
 }
-.stButton > button:hover { background: #e55a2b !important; transform: translateY(-1px); }
-div[data-testid="stMetricValue"] { font-family: 'Space Mono', monospace !important; font-size: 2rem !important; }
+[data-testid="stSidebar"] .stRadio label:hover {
+  color: var(--cyan) !important;
+}
+[data-testid="stSidebar"] .stRadio [data-checked="true"] + label,
+[data-testid="stSidebar"] input[type="radio"]:checked + label {
+  color: var(--cyan) !important;
+}
+
+/* ─── Form Elements ────────────────────────────────────────────────── */
+.stSelectbox > div > div {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 0.8rem !important;
+}
+.stSlider [data-baseweb="slider"] { background: var(--border) !important; }
+
+.stTabs [data-baseweb="tab-list"] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0;
+}
+.stTabs [data-baseweb="tab"] {
+  color: var(--muted) !important;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.stTabs [aria-selected="true"] {
+  color: var(--cyan) !important;
+  border-bottom: 2px solid var(--cyan) !important;
+}
+
+/* ─── Buttons — Technical Style ────────────────────────────────────── */
+.stButton > button {
+  background: linear-gradient(135deg, rgba(0,229,255,0.15), rgba(0,229,255,0.05)) !important;
+  color: var(--cyan) !important;
+  border: 1px solid var(--cyan-dim) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+  border-radius: 0 !important;
+  padding: 0.6rem 2rem !important;
+  transition: all 0.2s ease !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+.stButton > button:hover {
+  background: linear-gradient(135deg, rgba(0,229,255,0.25), rgba(0,229,255,0.1)) !important;
+  box-shadow: 0 0 20px rgba(0,229,255,0.15) !important;
+  border-color: var(--cyan) !important;
+  transform: none !important;
+}
+.stButton > button:active {
+  background: rgba(0,229,255,0.3) !important;
+}
+
+/* Metric value override */
+div[data-testid="stMetricValue"] {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 1.6rem !important;
+  color: var(--cyan) !important;
+}
+
+/* ─── Markdown text overrides ──────────────────────────────────────── */
+.stMarkdown h1 { font-family: 'Inter', sans-serif !important; font-weight: 600 !important; }
+.stMarkdown h2 { font-family: 'Inter', sans-serif !important; font-weight: 600 !important; }
+.stMarkdown h3 { font-family: 'IBM Plex Mono', monospace !important; font-weight: 500 !important; }
+
+/* Dataframe / table styling */
+.stDataFrame { border: 1px solid var(--border) !important; }
+.stDataFrame th {
+  background: var(--surface) !important;
+  color: var(--cyan) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 0.7rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+}
+
+/* ─── Divider — Subtle ─────────────────────────────────────────────── */
+hr { border-color: var(--border) !important; opacity: 0.5 !important; }
+
+/* ─── Live Indicator ───────────────────────────────────────────────── */
+.live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: pulse-glow 2s ease-in-out infinite;
+  margin-right: 6px;
+  box-shadow: 0 0 6px var(--green);
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted-lo); }
+
+/* ─── Expander ─────────────────────────────────────────────────────── */
+.streamlit-expanderHeader {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 0.72rem !important;
+  color: var(--text) !important;
+  letter-spacing: 0.06em !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Model loading ─────────────────────────────────────────────────────────────
-MODEL_DIR = Path(__file__).parent / "models"
+# ── Load model artifacts ──────────────────────────────────────────────────────
+BASE_DIR  = Path(__file__).resolve().parent
+MODEL_DIR = BASE_DIR / "models"
+DATA_DIR  = BASE_DIR / "data"
 
-@st.cache_resource(show_spinner="🌿 Training both models on first run…")
-def load_or_train():
+@st.cache_resource
+def load_model():
     from models.train import WildlifeRiskModel, train_and_save
-    from data.generate_data import generate_dataset
+    m = WildlifeRiskModel()
+    if not (MODEL_DIR / "xgb_model.pkl").exists():
+        train_and_save()
+    m.load()
+    return m
 
-    model = WildlifeRiskModel()
-    if (MODEL_DIR / "xgb_model.pkl").exists():
-        model.load()
-        if (MODEL_DIR / "dataset.parquet").exists():
-            df = pd.read_parquet(MODEL_DIR / "dataset.parquet")
-        else:
-            df = generate_dataset(12_000)
+@st.cache_data
+def load_dataset():
+    if (MODEL_DIR / "dataset.parquet").exists():
+        return pd.read_parquet(MODEL_DIR / "dataset.parquet")
     else:
-        _, df = train_and_save()
-        model.load()
-    return model, df
+        from data.generate_data import generate_dataset
+        df = generate_dataset(12_000)
+        df.to_parquet(MODEL_DIR / "dataset.parquet", index=False)
+        return df
 
-model, df = load_or_train()
+model = load_model()
+df    = load_dataset()
 
-# Get metrics (handle both old and new format)
-if "xgb" in model.metrics:
+# Parse multi-model metrics
+if "xgb" in model.metrics and isinstance(model.metrics["xgb"], dict):
     xgb_metrics = model.metrics["xgb"]
     rf_metrics  = model.metrics.get("rf", {})
-    shap_imp    = xgb_metrics.get("shap_importance", [])
-    rf_imp      = rf_metrics.get("feature_importance", [])
+    shap_imp    = model.metrics.get("shap_importance", [])
+    rf_imp      = model.metrics.get("rf_importance", [])
     best_model  = model.metrics.get("best_model", "XGBoost")
 else:
     # Backward compat with old single-model format
@@ -200,14 +404,20 @@ else:
     rf_imp      = []
     best_model  = "XGBoost"
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+# ── Sidebar — Command Console ──────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-    <div style='text-align:center; padding: 1rem 0 1.5rem 0;'>
-      <div style='font-size:2.8rem;'>🐾</div>
-      <div style='font-family:"Space Mono",monospace; font-size:1.1rem; color:#FF6B35; font-weight:700;'>WildGuard AI</div>
-      <div style='font-size:0.7rem; color:#8B949E; letter-spacing:0.12em;'>WILDLIFE RISK SYSTEM v3.0</div>
-      <div style='font-size:0.65rem; color:#58A6FF; letter-spacing:0.08em; margin-top:0.3rem;'>REAL-TIME DATA PIPELINE</div>
+    <div style='text-align:center; padding: 1.2rem 0 1rem 0;'>
+      <div style='font-size: 0.55rem; color: #3a4a5c; letter-spacing: 0.25em; font-family: "IBM Plex Mono", monospace; margin-bottom: 0.6rem;'>SYSTEM ONLINE</div>
+      <div style='position:relative; display:inline-block;'>
+        <div style='font-size:2.2rem; filter: drop-shadow(0 0 8px rgba(0,229,255,0.3));'>🐾</div>
+      </div>
+      <div style='font-family:"JetBrains Mono",monospace; font-size:1rem; color:#00e5ff; font-weight:600; margin-top:0.4rem; letter-spacing:0.05em; text-shadow: 0 0 15px rgba(0,229,255,0.3);'>WILDGUARD</div>
+      <div style='font-family:"IBM Plex Mono",monospace; font-size:0.58rem; color:#5a6d82; letter-spacing:0.2em; margin-top:0.15rem;'>RISK INTELLIGENCE v3.0</div>
+      <div style='margin-top:0.5rem; padding:0.25rem 0.8rem; display:inline-block; border: 1px solid rgba(0,230,118,0.3); background:rgba(0,230,118,0.05);'>
+        <span class='live-dot'></span>
+        <span style='font-family:"IBM Plex Mono",monospace; font-size:0.55rem; color:#00e676; letter-spacing:0.15em;'>PIPELINE ACTIVE</span>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -223,17 +433,23 @@ with st.sidebar:
     xgb_auc = xgb_metrics.get('roc_auc', 0)
     rf_auc  = rf_metrics.get('roc_auc', 0)
     st.markdown(f"""
-    <div class='metric-card' style='margin-top:0.5rem;'>
-      <h3>XGBoost</h3>
-      <div class='value' style='font-size:0.9rem; color:#FF6B35;'>● ROC-AUC: {xgb_auc:.4f}</div>
-    </div>
-    <div class='metric-card' style='margin-top:0.3rem;'>
-      <h3>Random Forest</h3>
-      <div class='value' style='font-size:0.9rem; color:#58A6FF;'>● ROC-AUC: {rf_auc:.4f}</div>
-    </div>
-    <div class='metric-card' style='margin-top:0.3rem;'>
-      <h3>Best Model</h3>
-      <div class='value' style='font-size:0.85rem; color:#00D4AA;'>✦ {best_model}</div>
+    <div style='padding:0.5rem 0;'>
+      <div style='font-family:"IBM Plex Mono",monospace; font-size:0.52rem; color:#3a4a5c; letter-spacing:0.2em; margin-bottom:0.5rem;'>▸ MODEL STATUS</div>
+      <div class='metric-card' style='margin-bottom:0.2rem;'>
+        <h3>XGBoost Classifier</h3>
+        <div class='value' style='font-size:0.85rem; color:#00e5ff;'>AUC {xgb_auc:.4f}</div>
+        <div class='sub'>gradient boosted trees</div>
+      </div>
+      <div class='metric-card' style='margin-bottom:0.2rem;'>
+        <h3>Random Forest</h3>
+        <div class='value' style='font-size:0.85rem; color:#4da6ff;'>AUC {rf_auc:.4f}</div>
+        <div class='sub'>ensemble bagging</div>
+      </div>
+      <div class='metric-card'>
+        <h3>Active Model</h3>
+        <div class='value' style='font-size:0.78rem; color:#00e676;'>◆ {best_model}</div>
+        <div class='sub'>highest validation AUC</div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -249,14 +465,19 @@ if page == "🏠 Dashboard":
         PALETTE
     )
 
-    st.markdown("""
-    <h1 style='font-family:"Space Mono",monospace; font-size:2rem; margin:0 0 0.2rem 0;'>
-      Wildlife-Vehicle Collision
-      <span style='color:#FF6B35;'>Risk Intelligence</span>
-    </h1>
-    <p style='color:#8B949E; font-size:0.88rem; margin:0 0 1.5rem 0;'>
-      Dual-model ML system (XGBoost + Random Forest) with real-time data pipeline
-    </p>
+    st.markdown(f"""
+    <div style='margin-bottom:1.5rem;'>
+      <div style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; color:#3a4a5c; letter-spacing:0.25em; margin-bottom:0.3rem;'>
+        ▸ CLASSIFIED // RISK INTELLIGENCE OVERVIEW // {datetime.now().strftime('%Y-%m-%d %H:%M UTC+5:30')}
+      </div>
+      <h1 style='font-family:"Inter",sans-serif; font-size:1.8rem; font-weight:600; margin:0 0 0.15rem 0; color:#e8f0fa;'>
+        Wildlife-Vehicle Collision
+        <span style='color:#00e5ff;'>Risk Intelligence</span>
+      </h1>
+      <p style='color:#5a6d82; font-size:0.78rem; margin:0; font-family:"IBM Plex Mono",monospace; letter-spacing:0.03em;'>
+        Dual-model ensemble (XGBoost + Random Forest) · {len(df):,} training records · 7-source real-time pipeline
+      </p>
+    </div>
     """, unsafe_allow_html=True)
 
     # ── KPI Row ────────────────────────────────────────────────────────────────
@@ -267,12 +488,12 @@ if page == "🏠 Dashboard":
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     kpis = [
-        (c1, "Total Records",    f"{len(df):,}",                     "Training data"),
-        (c2, "Accident Rate",    f"{acc_rate:.1%}",                  "Overall"),
-        (c3, "High-Risk Zones",  f"{high_risk:,}",                   "Risk > 65%"),
-        (c4, "Riskiest Species", top_sp.capitalize(),                 "Most accidents"),
-        (c5, "XGB AUC",          f"{xgb_metrics.get('roc_auc',0):.4f}", "XGBoost"),
-        (c6, "RF AUC",           f"{rf_metrics.get('roc_auc',0):.4f}",  "Random Forest"),
+        (c1, "Total Records",    f"{len(df):,}",                     "training dataset"),
+        (c2, "Accident Rate",    f"{acc_rate:.1%}",                  "binary target"),
+        (c3, "High-Risk Zones",  f"{high_risk:,}",                   "score > 0.65"),
+        (c4, "Riskiest Species", top_sp.capitalize(),                 "highest frequency"),
+        (c5, "XGB AUC",          f"{xgb_metrics.get('roc_auc',0):.4f}", "gradient boosting"),
+        (c6, "RF AUC",           f"{rf_metrics.get('roc_auc',0):.4f}",  "random forest"),
     ]
     for col, title, val, sub in kpis:
         with col:

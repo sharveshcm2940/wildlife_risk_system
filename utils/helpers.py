@@ -12,22 +12,24 @@ import plotly.express as px
 from typing import Optional
 
 
-# ── Colour palette ────────────────────────────────────────────────────────────
+# ── Colour palette — Palantir Foundry Aesthetic ──────────────────────────────
 PALETTE = {
-    "bg":       "#0D1117",
-    "surface":  "#161B22",
-    "border":   "#30363D",
-    "accent1":  "#FF6B35",
-    "accent2":  "#00D4AA",
-    "accent3":  "#FFD166",
-    "low":      "#06D6A0",
-    "medium":   "#FFD166",
-    "high":     "#EF476F",
-    "critical": "#B5179E",
-    "text":     "#E6EDF3",
-    "muted":    "#8B949E",
-    "blue":     "#58A6FF",
-    "purple":   "#BC8CF2",
+    "bg":       "#060a10",
+    "surface":  "#0d1320",
+    "border":   "#1a2332",
+    "accent1":  "#00e5ff",
+    "accent2":  "#00e676",
+    "accent3":  "#ffb020",
+    "low":      "#00e676",
+    "medium":   "#ffb020",
+    "high":     "#ff3d5a",
+    "critical": "#d500f9",
+    "text":     "#c8d6e5",
+    "muted":    "#5a6d82",
+    "blue":     "#4da6ff",
+    "purple":   "#9d7aff",
+    "orange":   "#ff7043",
+    "cyan":     "#00e5ff",
 }
 
 RISK_LEVELS = [
@@ -40,7 +42,7 @@ RISK_LEVELS = [
 PLOTLY_LAYOUT = dict(
     paper_bgcolor = PALETTE["bg"],
     plot_bgcolor  = PALETTE["surface"],
-    font          = dict(color=PALETTE["text"], family="'JetBrains Mono', monospace"),
+    font          = dict(color=PALETTE["text"], family="'JetBrains Mono', 'IBM Plex Mono', monospace"),
     margin        = dict(l=40, r=20, t=50, b=40),
 )
 
