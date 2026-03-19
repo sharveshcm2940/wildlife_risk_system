@@ -681,6 +681,52 @@ hr { border-color: var(--border) !important; opacity: 0.5 !important; }
 </style>
 """, unsafe_allow_html=True)
 
+# ═══════════════════ SPLASH SCREEN ═══════════════════
+if "splash_done" not in st.session_state:
+    st.session_state.splash_done = True
+    st.markdown("""<div id="spl" style="position:fixed;inset:0;z-index:999999;background:#030508;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;animation:sO .8s ease 4.5s forwards">
+<style>
+@keyframes sO{to{opacity:0;visibility:hidden;pointer-events:none}}
+@keyframes sR{to{transform:rotate(360deg)}}
+@keyframes sP{0%,100%{box-shadow:0 0 0 0 rgba(0,229,255,.4)}50%{box-shadow:0 0 0 14px rgba(0,229,255,0)}}
+@keyframes sB{from{width:0}to{width:100%}}
+@keyframes sL{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+.sl{font-size:.55rem;color:#3a4a5c;letter-spacing:.1em;margin:.13rem 0;opacity:0;animation:sL .25s ease forwards}
+.sl .g{color:#00e676}.sl .w{color:#ffb020}.sl .c{color:#00e5ff}
+.sb{width:250px;height:2px;background:#1a2332;margin:.2rem 0;overflow:hidden}
+.sb div{height:100%;background:linear-gradient(90deg,#00e5ff,#4da6ff);animation:sB ease-out forwards}
+</style>
+<div style="position:relative;width:90px;height:90px;margin-bottom:1rem">
+<div style="position:absolute;inset:0;border:1px solid rgba(0,229,255,.18);border-radius:50%"></div>
+<div style="position:absolute;inset:15px;border:1px solid rgba(0,229,255,.1);border-radius:50%"></div>
+<div style="position:absolute;inset:30px;border:1px dashed rgba(0,229,255,.06);border-radius:50%"></div>
+<div style="position:absolute;top:50%;left:8px;right:8px;height:1px;background:rgba(0,229,255,.12);transform:translateY(-50%)"></div>
+<div style="position:absolute;left:50%;top:8px;bottom:8px;width:1px;background:rgba(0,229,255,.12);transform:translateX(-50%)"></div>
+<div style="position:absolute;top:50%;left:50%;width:50%;height:1px;background:linear-gradient(90deg,#00e5ff,transparent);transform-origin:0 0;animation:sR 3s linear infinite;opacity:.7"><div style="position:absolute;right:0;top:-3px;width:6px;height:6px;background:#00e5ff;border-radius:50%;box-shadow:0 0 10px #00e5ff"></div></div>
+<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:5px;height:5px;background:#00e5ff;border-radius:50%;box-shadow:0 0 12px #00e5ff;animation:sP 2s ease-in-out infinite"></div>
+</div>
+<div style="font-size:1.6rem;font-weight:700;color:#00e5ff;letter-spacing:.18em;text-shadow:0 0 25px rgba(0,229,255,.35);margin-bottom:.1rem">WILDGUARD</div>
+<div style="font-size:.42rem;color:#3a4a5c;letter-spacing:.35em;margin-bottom:1rem">THREAT INTELLIGENCE PLATFORM · v3.0</div>
+<div style="width:280px;text-align:left">
+<div class="sl" style="animation-delay:.2s">[<span class=g>OK</span>] KERNEL INIT · SECURE BOOT</div>
+<div class="sl" style="animation-delay:.5s">[<span class=g>OK</span>] XGBOOST CLASSIFIER · <span class=c>500 ESTIMATORS</span></div>
+<div class="sl" style="animation-delay:.8s">[<span class=g>OK</span>] RANDOM FOREST · <span class=c>400 TREES</span></div>
+<div class="sb"><div style="animation-delay:.9s;animation-duration:1s"></div></div>
+<div class="sl" style="animation-delay:1.1s">[<span class=g>OK</span>] SHAP TREE EXPLAINER · <span class=c>SHAPLEY ADDITIVE</span></div>
+<div class="sl" style="animation-delay:1.5s">[<span class=g>OK</span>] REAL-TIME PIPELINE · <span class=c>7 DATA SOURCES</span></div>
+<div class="sl" style="animation-delay:1.8s">[<span class=g>OK</span>] GEOSPATIAL ENGINE · FOLIUM HEATMAP</div>
+<div class="sl" style="animation-delay:2.1s">[<span class=w>!!</span>] THREAT LEVEL · <span class=w>ELEVATED</span></div>
+<div class="sb"><div style="animation-delay:2.2s;animation-duration:1.2s"></div></div>
+<div class="sl" style="animation-delay:2.5s;font-size:.42rem">&nbsp;&nbsp;WEATHER · OSM · GBIF · NEWS · NDVI · TRAFFIC · GOV</div>
+<div class="sl" style="animation-delay:2.9s">[<span class=g>OK</span>] 28 HIGHWAY SEGMENTS · SOUTH INDIA</div>
+<div class="sl" style="animation-delay:3.3s">[<span class=g>::</span>] <span class=c>SYSTEM READY</span> · CLEARANCE LEVEL 4</div>
+</div>
+<div style="position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#00e5ff,transparent);opacity:.3"></div>
+<div style="position:absolute;bottom:6px;font-size:.35rem;color:#1a2332;letter-spacing:.25em">WILDLIFE-VEHICLE COLLISION RISK INTELLIGENCE · CLASSIFIED</div>
+</div>
+<script>setTimeout(function(){var e=document.getElementById('spl');if(e)e.style.display='none'},5200)</script>
+""", unsafe_allow_html=True)
+
 
 # ── Load model artifacts ──────────────────────────────────────────────────────
 BASE_DIR  = Path(__file__).resolve().parent
