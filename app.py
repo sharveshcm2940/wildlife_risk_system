@@ -393,8 +393,8 @@ df    = load_dataset()
 if "xgb" in model.metrics and isinstance(model.metrics["xgb"], dict):
     xgb_metrics = model.metrics["xgb"]
     rf_metrics  = model.metrics.get("rf", {})
-    shap_imp    = model.metrics.get("shap_importance", [])
-    rf_imp      = model.metrics.get("rf_importance", [])
+    shap_imp    = xgb_metrics.get("shap_importance", [])
+    rf_imp      = rf_metrics.get("feature_importance", [])
     best_model  = model.metrics.get("best_model", "XGBoost")
 else:
     # Backward compat with old single-model format
@@ -788,7 +788,36 @@ elif page == "🔮 Live Risk Predictor":
             </div>""", unsafe_allow_html=True)
 
         # ── SHAP explanation ──────────────────────────────────────────────────
-        st.markdown("<div class='section-header'>🔬 SHAP Explanation (XGBoost)</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-header'>🔬 SHAP Explanation — Why This Prediction</div>", unsafe_allow_html=True)
+        st.markdown("""
+        <p style='color:#5a6d82; font-size:0.72rem; font-family:"IBM Plex Mono",monospace;'>
+          SHAP (SHapley Additive exPlanations) decomposes the prediction into individual feature contributions.
+          Positive values push risk higher; negative values push risk lower.
+        </p>
+        """, unsafe_allow_html=True)
+
+        shap_explanations = {
+            'movement_score': ("Animal Activity", "Composite score of wildlife movement likelihood based on habitat, water proximity, and temporal factors"),
+            'driver_risk': ("Driver Behavior", "Combination of speed compliance, night driving, and road type risk factors"),
+            'species_risk': ("Species Danger Level", "Mapped risk score for the dominant wildlife species in the area"),
+            'kde_density': ("Historical Hotspot Density", "Kernel density estimate from past accident cluster analysis"),
+            'road_type': ("Road Classification", "Type of road — forest roads and rural roads carry higher inherent risk"),
+            'night_flag': ("Nighttime Driving", "Binary flag: 1 = night (8 PM–6 AM), when visibility drops and animals are active"),
+            'corridor_dist_km': ("Wildlife Corridor Distance", "Distance from nearest known wildlife migration corridor"),
+            'speed_ratio': ("Speed Compliance", "Ratio of actual speed to posted limit — values > 1.0 indicate speeding"),
+            'ndvi': ("Vegetation Density (NDVI)", "Normalized vegetation index — dense vegetation reduces driver sightlines"),
+            'past_accidents': ("Historical Incidents", "Number of recorded accidents in this location previously"),
+            'rainfall_mm': ("Current Rainfall", "Precipitation level — wet conditions + animal water-seeking = higher risk"),
+            'visibility_m': ("Visibility Distance", "How far ahead the driver can see — fog/rain reduce this dramatically"),
+            'temperature_c': ("Temperature", "Current temperature — extreme heat/cold affects animal movement patterns"),
+            'humidity_pct': ("Humidity Level", "Atmospheric humidity — correlates with fog formation and animal activity"),
+            'hour': ("Time of Day", "Hour of the day — dawn (5-7 AM) and dusk (6-8 PM) are peak crossing times"),
+            'dawn_dusk': ("Dawn/Dusk Window", "Whether it's currently in the critical dawn or dusk period"),
+            'breeding_season': ("Breeding Season", "Whether animals are in their breeding period — increases movement"),
+            'dist_water_km': ("Water Source Distance", "Distance to nearest water body — animals cross roads to reach water"),
+            'protected_dist_km': ("Protected Area Distance", "Distance from nearest wildlife sanctuary or national park"),
+        }
+
         try:
             sv, X_in, base = model.predict_shap(feature_df)
             sv_flat = sv[0] if sv.ndim == 2 else sv
@@ -797,6 +826,35 @@ elif page == "🔮 Live Risk Predictor":
                                X_in.iloc[0].values, base),
                 use_container_width=True
             )
+
+            # ── Top SHAP Drivers Table ────────────────────────────────────────
+            st.markdown("<div class='section-header'>📊 Top Risk Drivers — Plain Language</div>", unsafe_allow_html=True)
+            pairs = sorted(zip(sv_flat, model.feature_cols, X_in.iloc[0].values),
+                           key=lambda x: abs(x[0]), reverse=True)[:8]
+
+            for sv_val, feat, feat_val in pairs:
+                direction = "↑ increases" if sv_val > 0 else "↓ decreases"
+                dir_color = "#ff3d5a" if sv_val > 0 else "#00e676"
+                human_name, description = shap_explanations.get(feat, (feat.replace("_", " ").title(), "Feature contributing to risk prediction"))
+                st.markdown(f"""
+                <div style='background:#0d1320; border:1px solid #1a2332; padding:0.7rem 1rem; margin:0.3rem 0; position:relative;'>
+                  <div style='position:absolute; left:0; top:0; bottom:0; width:3px; background:{dir_color};'></div>
+                  <div style='display:flex; justify-content:space-between; align-items:center;'>
+                    <div>
+                      <span style='font-family:"JetBrains Mono",monospace; font-size:0.78rem; color:#e8f0fa; font-weight:600;'>{human_name}</span>
+                      <span style='font-family:"IBM Plex Mono",monospace; font-size:0.6rem; color:#5a6d82; margin-left:0.5rem;'>({feat})</span>
+                    </div>
+                    <div style='text-align:right;'>
+                      <span style='font-family:"JetBrains Mono",monospace; font-size:0.82rem; color:{dir_color}; font-weight:600;'>{sv_val:+.4f}</span>
+                      <span style='font-family:"IBM Plex Mono",monospace; font-size:0.6rem; color:#5a6d82; margin-left:0.5rem;'>val={feat_val:.3f}</span>
+                    </div>
+                  </div>
+                  <div style='font-size:0.68rem; color:#5a6d82; margin-top:0.3rem; font-family:"IBM Plex Mono",monospace;'>
+                    {direction} risk · {description}
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
         except Exception as e:
             st.warning(f"SHAP explanation unavailable: {e}")
 
@@ -1401,19 +1459,19 @@ elif page == "⚡ Future Hotspots":
                 fig_scatter.add_trace(go.Scatter(
                     x=subset['accident_rate'], y=subset['hotspot_score'],
                     mode='markers+text',
-                    marker=dict(size=12, color=color, opacity=0.85, line=dict(width=1, color='white')),
+                    marker=dict(size=12, color=color, opacity=0.85, line=dict(width=1, color='#1a2332')),
                     text=subset['highway_segment'].str[:18],
                     textposition='top center',
                     textfont=dict(size=8, color=color),
                     name=cat,
                     hovertemplate='<b>%{text}</b><br>Accident Rate: %{x:.1%}<br>Hotspot Score: %{y:.3f}<extra></extra>',
                 ))
-        fig_scatter.add_vline(x=median_acc, line_dash="dash", line_color="#8B949E", opacity=0.5)
-        fig_scatter.add_hline(y=median_risk, line_dash="dash", line_color="#8B949E", opacity=0.5)
+        fig_scatter.add_vline(x=median_acc, line_dash="dash", line_color="#5a6d82", opacity=0.5)
+        fig_scatter.add_hline(y=median_risk, line_dash="dash", line_color="#5a6d82", opacity=0.5)
         fig_scatter.update_layout(
             xaxis_title="Historical Accident Rate", yaxis_title="Hotspot Score (Predicted Risk)",
-            template="plotly_dark", paper_bgcolor="#0D1117", plot_bgcolor="#161B22",
-            font=dict(color="#E6EDF3"), height=500,
+            template="plotly_dark", paper_bgcolor="#060a10", plot_bgcolor="#0d1320",
+            font=dict(color="#c8d6e5", family="'JetBrains Mono', monospace"), height=500,
             legend=dict(orientation="h", y=-0.15),
         )
         st.plotly_chart(fig_scatter, use_container_width=True)
@@ -1421,7 +1479,7 @@ elif page == "⚡ Future Hotspots":
         # ── SHAP Global Feature Importance ───────────────────────────────────
         st.markdown("<div class='section-header'>🧠 SHAP — Global Feature Importance (What Drives Risk Overall)</div>", unsafe_allow_html=True)
         st.markdown("""
-        <p style='color:#8B949E; font-size:0.78rem;'>
+        <p style='color:#5a6d82; font-size:0.72rem; font-family:"IBM Plex Mono",monospace;'>
           SHAP (SHapley Additive exPlanations) decomposes the model's prediction into contributions
           from each feature. Below shows which features have the <b>most influence on risk predictions</b>
           across all highway segments. This tells forest officials where to focus intervention resources.
@@ -1436,14 +1494,14 @@ elif page == "⚡ Future Hotspots":
                 orientation='h',
                 marker=dict(
                     color=shap_df['shap_mean'],
-                    colorscale=[[0, '#06D6A0'], [0.5, '#FFD166'], [1.0, '#EF476F']],
+                    colorscale=[[0, '#00e676'], [0.5, '#ffb020'], [1.0, '#ff3d5a']],
                     line=dict(width=1, color='rgba(255,255,255,0.1)'),
                 ),
                 hovertemplate='<b>%{y}</b><br>Mean |SHAP|: %{x:.4f}<extra></extra>',
             ))
             fig_shap.update_layout(
-                template="plotly_dark", paper_bgcolor="#0D1117", plot_bgcolor="#161B22",
-                font=dict(color="#E6EDF3"), height=450,
+                template="plotly_dark", paper_bgcolor="#060a10", plot_bgcolor="#0d1320",
+                font=dict(color="#c8d6e5", family="'JetBrains Mono', monospace"), height=450,
                 xaxis_title="Mean |SHAP Value| (Impact on Prediction)",
                 yaxis=dict(autorange="reversed"),
                 margin=dict(l=150),
