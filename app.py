@@ -358,6 +358,326 @@ hr { border-color: var(--border) !important; opacity: 0.5 !important; }
   background: var(--surface) !important;
   border: 1px solid var(--border) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   1. RADAR SWEEP — sidebar animated ping
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes radar-sweep {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.radar-container {
+  position: relative;
+  width: 70px; height: 70px;
+  margin: 0 auto 0.5rem;
+}
+.radar-ring {
+  position: absolute; inset: 0;
+  border: 1px solid rgba(0,229,255,0.15);
+  border-radius: 50%;
+}
+.radar-ring.inner { inset: 12px; border-color: rgba(0,229,255,0.1); }
+.radar-ring.core  { inset: 24px; border-color: rgba(0,229,255,0.08); }
+.radar-sweep-line {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 50%; height: 1px;
+  background: linear-gradient(90deg, var(--cyan), transparent);
+  transform-origin: 0 0;
+  animation: radar-sweep 4s linear infinite;
+  opacity: 0.7;
+}
+.radar-sweep-line::after {
+  content: '';
+  position: absolute;
+  right: 0; top: -3px;
+  width: 6px; height: 6px;
+  background: var(--cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--cyan);
+}
+.radar-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px; height: 4px;
+  background: var(--cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--cyan);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   2. CLASSIFIED TICKER BAR — scrolling top banner
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+.classified-ticker {
+  overflow: hidden;
+  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.04), transparent);
+  border: 1px solid var(--border);
+  border-left: none; border-right: none;
+  height: 18px;
+  margin-bottom: 0.8rem;
+  position: relative;
+}
+.classified-ticker::before,
+.classified-ticker::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 40px;
+  z-index: 1;
+}
+.classified-ticker::before { left: 0; background: linear-gradient(90deg, var(--bg), transparent); }
+.classified-ticker::after  { right: 0; background: linear-gradient(90deg, transparent, var(--bg)); }
+.ticker-text {
+  display: inline-block;
+  white-space: nowrap;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.48rem;
+  color: var(--muted-lo);
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  animation: ticker-scroll 30s linear infinite;
+  line-height: 18px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   3. CROSSHAIR TARGETS on hover — tactical focus
+   ═══════════════════════════════════════════════════════════════════════════ */
+.metric-card:hover::before {
+  width: 16px; height: 16px;
+  border-color: var(--cyan);
+  filter: drop-shadow(0 0 3px var(--cyan));
+  transition: all 0.2s ease;
+}
+.metric-card:hover::after {
+  width: 16px; height: 16px;
+  border-color: var(--cyan);
+  filter: drop-shadow(0 0 3px var(--cyan));
+  transition: all 0.2s ease;
+}
+.metric-card:hover {
+  border-color: var(--border-hi);
+  box-shadow: 0 0 15px rgba(0,229,255,0.06);
+  transition: all 0.2s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   4. THREAT LEVEL STRIP — colored edge indicator
+   ═══════════════════════════════════════════════════════════════════════════ */
+.threat-strip {
+  display: flex; gap: 1px;
+  margin: 0.6rem 0;
+  height: 3px;
+}
+.threat-strip .seg {
+  flex: 1;
+  transition: all 0.3s ease;
+}
+.threat-strip .seg:hover { height: 6px; margin-top: -1.5px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   5. MATRIX DATA RAIN — background decoration
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes rain-fall {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(400%); opacity: 0; }
+}
+.data-rain {
+  position: fixed;
+  top: 0; right: 20px;
+  width: 200px; height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+.rain-col {
+  position: absolute;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.45rem;
+  color: rgba(0,229,255,0.06);
+  writing-mode: vertical-rl;
+  animation: rain-fall linear infinite;
+  letter-spacing: 0.3em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   6. HOLOGRAPHIC SHIMMER — section shine effect
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes holo-shimmer {
+  0%   { left: -150%; }
+  100% { left: 250%; }
+}
+.section-header::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 60px;
+  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.06), transparent);
+  animation: holo-shimmer 6s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   7. CORNER VIGNETTE — ambient darkening
+   ═══════════════════════════════════════════════════════════════════════════ */
+.stApp::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.4) 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   8. TACTICAL GRID — dot matrix background
+   ═══════════════════════════════════════════════════════════════════════════ */
+.block-container::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    radial-gradient(circle, rgba(0,229,255,0.02) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   9. BREATHING RING — branding pulse around logo
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes breathe-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,229,255,0.3); }
+  50%      { box-shadow: 0 0 0 8px rgba(0,229,255,0); }
+}
+.brand-ring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px; height: 52px;
+  border: 1px solid rgba(0,229,255,0.25);
+  border-radius: 50%;
+  animation: breathe-ring 3s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   10. GLITCH FLICKER — header text distortion
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes glitch {
+  0%, 98% { text-shadow: 0 0 20px rgba(0,229,255,0.2); }
+  99%     { text-shadow: -2px 0 #ff3d5a, 2px 0 #00e5ff; }
+  100%    { text-shadow: 0 0 20px rgba(0,229,255,0.2); }
+}
+.stMarkdown h1 span[style*="color:#00e5ff"],
+.stMarkdown h1 span[style*="color:#00e676"] {
+  animation: glitch 8s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   11. BOOT SEQUENCE — typing cursor on classified labels
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes blink-cursor {
+  0%, 100% { border-right-color: transparent; }
+  50%      { border-right-color: var(--cyan); }
+}
+.boot-text {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.5rem;
+  color: var(--muted-lo);
+  letter-spacing: 0.2em;
+  border-right: 1.5px solid var(--cyan);
+  padding-right: 3px;
+  animation: blink-cursor 1.2s step-end infinite;
+  display: inline-block;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   12. TACTICAL SCOPE RETICLE — sidebar brand element
+   ═══════════════════════════════════════════════════════════════════════════ */
+.reticle {
+  position: relative;
+  width: 80px; height: 80px;
+  margin: 0 auto;
+}
+.reticle::before, .reticle::after {
+  content: '';
+  position: absolute;
+  background: rgba(0,229,255,0.15);
+}
+.reticle::before {
+  top: 50%; left: 8px; right: 8px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+.reticle::after {
+  left: 50%; top: 8px; bottom: 8px;
+  width: 1px;
+  transform: translateX(-50%);
+}
+.reticle-outer {
+  position: absolute; inset: 0;
+  border: 1px solid rgba(0,229,255,0.12);
+  border-radius: 50%;
+}
+.reticle-inner {
+  position: absolute; inset: 14px;
+  border: 1px dashed rgba(0,229,255,0.08);
+  border-radius: 50%;
+}
+.reticle-dot {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 5px; height: 5px;
+  background: var(--cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--cyan), 0 0 20px rgba(0,229,255,0.3);
+}
+.reticle-tick {
+  position: absolute;
+  background: rgba(0,229,255,0.2);
+}
+.reticle-tick.t { top: 2px; left: 50%; width: 1px; height: 6px; transform: translateX(-50%); }
+.reticle-tick.b { bottom: 2px; left: 50%; width: 1px; height: 6px; transform: translateX(-50%); }
+.reticle-tick.l { left: 2px; top: 50%; height: 1px; width: 6px; transform: translateY(-50%); }
+.reticle-tick.r { right: 2px; top: 50%; height: 1px; width: 6px; transform: translateY(-50%); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BONUS: Intel panel styling
+   ═══════════════════════════════════════════════════════════════════════════ */
+.intel-panel {
+  background: linear-gradient(145deg, var(--surface), var(--bg-alt));
+  border: 1px solid var(--border);
+  padding: 0.8rem 1rem;
+  position: relative;
+  margin: 0.5rem 0;
+  overflow: hidden;
+}
+.intel-panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+}
+.intel-panel .panel-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.5rem;
+  color: var(--muted-lo);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+}
+.intel-panel .panel-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--cyan);
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -407,17 +727,42 @@ else:
 # ── Sidebar — Command Console ──────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-    <div style='text-align:center; padding: 1.2rem 0 1rem 0;'>
-      <div style='font-size: 0.55rem; color: #3a4a5c; letter-spacing: 0.25em; font-family: "IBM Plex Mono", monospace; margin-bottom: 0.6rem;'>SYSTEM ONLINE</div>
-      <div style='position:relative; display:inline-block;'>
-        <div style='font-size:2.2rem; filter: drop-shadow(0 0 8px rgba(0,229,255,0.3));'>🐾</div>
+    <div style='text-align:center; padding: 1.2rem 0 0.6rem 0;'>
+      <div class='boot-text'>SYSTEM ONLINE · CLEARANCE LEVEL 4</div>
+      <div class='reticle' style='margin: 0.6rem auto 0.2rem;'>
+        <div class='reticle-outer'></div>
+        <div class='reticle-inner'></div>
+        <div class='reticle-dot'></div>
+        <div class='reticle-tick t'></div>
+        <div class='reticle-tick b'></div>
+        <div class='reticle-tick l'></div>
+        <div class='reticle-tick r'></div>
+        <div class='radar-sweep-line'></div>
       </div>
-      <div style='font-family:"JetBrains Mono",monospace; font-size:1rem; color:#00e5ff; font-weight:600; margin-top:0.4rem; letter-spacing:0.05em; text-shadow: 0 0 15px rgba(0,229,255,0.3);'>WILDGUARD</div>
-      <div style='font-family:"IBM Plex Mono",monospace; font-size:0.58rem; color:#5a6d82; letter-spacing:0.2em; margin-top:0.15rem;'>RISK INTELLIGENCE v3.0</div>
-      <div style='margin-top:0.5rem; padding:0.25rem 0.8rem; display:inline-block; border: 1px solid rgba(0,230,118,0.3); background:rgba(0,230,118,0.05);'>
+      <div style='font-family:"JetBrains Mono",monospace; font-size:1.1rem; color:#00e5ff; font-weight:700; letter-spacing:0.12em; text-shadow: 0 0 18px rgba(0,229,255,0.35);'>WILDGUARD</div>
+      <div style='font-family:"IBM Plex Mono",monospace; font-size:0.48rem; color:#3a4a5c; letter-spacing:0.25em; margin-top:0.1rem;'>THREAT INTELLIGENCE PLATFORM v3.0</div>
+    </div>
+
+    <!-- Threat Level Strip -->
+    <div class='threat-strip' title='Threat Level: Elevated'>
+      <div class='seg' style='background:#00e676;'></div>
+      <div class='seg' style='background:#00e676;'></div>
+      <div class='seg' style='background:#4caf50;'></div>
+      <div class='seg' style='background:#ffb020;'></div>
+      <div class='seg' style='background:#ffb020;'></div>
+      <div class='seg' style='background:#ff7043;'></div>
+      <div class='seg' style='background:#ff3d5a;'></div>
+      <div class='seg' style='background:#ff3d5a;'></div>
+      <div class='seg' style='background:#d500f9;'></div>
+      <div class='seg' style='background:#1a2332;'></div>
+    </div>
+
+    <div style='display:flex; justify-content:space-between; padding:0 0.2rem;'>
+      <div style='display:flex; align-items:center; gap:0.3rem;'>
         <span class='live-dot'></span>
-        <span style='font-family:"IBM Plex Mono",monospace; font-size:0.55rem; color:#00e676; letter-spacing:0.15em;'>PIPELINE ACTIVE</span>
+        <span style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; color:#00e676; letter-spacing:0.12em;'>PIPELINE ACTIVE</span>
       </div>
+      <span style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; color:#3a4a5c; letter-spacing:0.08em;'>▸ SECURE</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -433,25 +778,92 @@ with st.sidebar:
     xgb_auc = xgb_metrics.get('roc_auc', 0)
     rf_auc  = rf_metrics.get('roc_auc', 0)
     st.markdown(f"""
-    <div style='padding:0.5rem 0;'>
-      <div style='font-family:"IBM Plex Mono",monospace; font-size:0.52rem; color:#3a4a5c; letter-spacing:0.2em; margin-bottom:0.5rem;'>▸ MODEL STATUS</div>
-      <div class='metric-card' style='margin-bottom:0.2rem;'>
-        <h3>XGBoost Classifier</h3>
-        <div class='value' style='font-size:0.85rem; color:#00e5ff;'>AUC {xgb_auc:.4f}</div>
-        <div class='sub'>gradient boosted trees</div>
+    <div style='padding:0.3rem 0;'>
+      <div style='font-family:"IBM Plex Mono",monospace; font-size:0.48rem; color:#3a4a5c; letter-spacing:0.2em; margin-bottom:0.4rem;'>▸ DUAL-MODEL STATUS</div>
+
+      <div class='intel-panel'>
+        <div class='panel-label'>XGBoost Gradient Boost</div>
+        <div style='display:flex; justify-content:space-between; align-items:baseline;'>
+          <div class='panel-value'>AUC {xgb_auc:.4f}</div>
+          <span style='font-size:0.5rem; color:#00e676;'>● TRAINED</span>
+        </div>
       </div>
-      <div class='metric-card' style='margin-bottom:0.2rem;'>
-        <h3>Random Forest</h3>
-        <div class='value' style='font-size:0.85rem; color:#4da6ff;'>AUC {rf_auc:.4f}</div>
-        <div class='sub'>ensemble bagging</div>
+
+      <div class='intel-panel'>
+        <div class='panel-label'>Random Forest Ensemble</div>
+        <div style='display:flex; justify-content:space-between; align-items:baseline;'>
+          <div class='panel-value' style='color:#4da6ff;'>AUC {rf_auc:.4f}</div>
+          <span style='font-size:0.5rem; color:#00e676;'>● TRAINED</span>
+        </div>
       </div>
-      <div class='metric-card'>
-        <h3>Active Model</h3>
-        <div class='value' style='font-size:0.78rem; color:#00e676;'>◆ {best_model}</div>
-        <div class='sub'>highest validation AUC</div>
+
+      <div class='intel-panel'>
+        <div class='panel-label'>Active Classifier</div>
+        <div class='panel-value' style='color:#00e676;'>◆ {best_model}</div>
+      </div>
+    </div>
+
+    <!-- System Intel -->
+    <div style='margin-top:0.8rem;'>
+      <div style='font-family:"IBM Plex Mono",monospace; font-size:0.48rem; color:#3a4a5c; letter-spacing:0.2em; margin-bottom:0.4rem;'>▸ SYSTEM INTEL</div>
+
+      <div class='intel-panel'>
+        <div class='panel-label'>Data Pipeline</div>
+        <div style='display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.2rem;'>
+          <span style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; padding:0.1rem 0.4rem; border:1px solid rgba(0,229,255,0.2); color:var(--cyan);'>WEATHER</span>
+          <span style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; padding:0.1rem 0.4rem; border:1px solid rgba(0,229,255,0.2); color:var(--cyan);'>OSM</span>
+          <span style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; padding:0.1rem 0.4rem; border:1px solid rgba(0,229,255,0.2); color:var(--cyan);'>GBIF</span>
+          <span style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; padding:0.1rem 0.4rem; border:1px solid rgba(0,229,255,0.2); color:var(--cyan);'>NEWS</span>
+          <span style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; padding:0.1rem 0.4rem; border:1px solid rgba(0,229,255,0.2); color:var(--cyan);'>NDVI</span>
+          <span style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; padding:0.1rem 0.4rem; border:1px solid rgba(0,229,255,0.2); color:var(--cyan);'>TRAFFIC</span>
+          <span style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; padding:0.1rem 0.4rem; border:1px solid rgba(0,229,255,0.2); color:var(--cyan);'>GOV</span>
+        </div>
+      </div>
+
+      <div class='intel-panel'>
+        <div class='panel-label'>Feature Vector</div>
+        <div class='panel-value'>{len(model.feature_cols)} dimensions</div>
+      </div>
+
+      <div class='intel-panel'>
+        <div class='panel-label'>Training Records</div>
+        <div class='panel-value'>{len(df):,} observations</div>
+      </div>
+
+      <div class='intel-panel'>
+        <div class='panel-label'>SHAP Explainer</div>
+        <div style='display:flex; justify-content:space-between; align-items:baseline;'>
+          <div class='panel-value'>TreeSHAP</div>
+          <span style='font-size:0.5rem; color:#00e676;'>● READY</span>
+        </div>
       </div>
     </div>
     """, unsafe_allow_html=True)
+
+
+# ── Global HUD Elements ──────────────────────────────────────────────────────
+# Data Rain (Matrix falling characters — right edge)
+rain_cols = ""
+import random
+data_chars = ["01001", "NDVI", "0.847", "RISK", "SHAP", "25.3C", "TIGER", "NH48", "ALERT", "KDE", "RF:0.81", "XGB"]
+for i in range(8):
+    left = 10 + i * 25
+    dur = random.uniform(8, 18)
+    delay = random.uniform(0, 8)
+    text = " · ".join(random.choices(data_chars, k=6))
+    rain_cols += f"<div class='rain-col' style='left:{left}px; animation-duration:{dur}s; animation-delay:{delay}s;'>{text}</div>"
+
+st.markdown(f"""
+<div class='data-rain'>{rain_cols}</div>
+
+<!-- Classified Ticker -->
+<div class='classified-ticker'>
+  <span class='ticker-text'>
+    ◈ WILDGUARD THREAT INTELLIGENCE — CLASSIFIED // RESTRICTED ACCESS — DUAL MODEL ENSEMBLE (XGBOOST + RANDOM FOREST) — 7 REAL-TIME DATA SOURCES — SHAP EXPLAINABILITY ENGINE ACTIVE — COVERING 28 HIGHWAY SEGMENTS ACROSS SOUTH INDIA — WILDLIFE CORRIDOR MONITORING — AUTOMATED RISK SCORING —
+    ◈ WILDGUARD THREAT INTELLIGENCE — CLASSIFIED // RESTRICTED ACCESS — DUAL MODEL ENSEMBLE (XGBOOST + RANDOM FOREST) — 7 REAL-TIME DATA SOURCES — SHAP EXPLAINABILITY ENGINE ACTIVE —
+  </span>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
