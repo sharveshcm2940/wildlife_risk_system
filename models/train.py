@@ -29,7 +29,7 @@ MODEL_DIR.mkdir(exist_ok=True)
 # ── Feature schema ────────────────────────────────────────────────────────────
 CATEGORICAL_COLS = ['road_type', 'season', 'species']
 TARGET           = 'accident'
-DROP_COLS        = ['accident', 'risk_score', 'latitude', 'longitude']
+DROP_COLS        = ['accident', 'risk_score', 'latitude', 'longitude', 'highway_segment']
 
 FEATURE_GROUPS = {
     "🌍 Spatial / GIS":  ['ndvi', 'dist_water_km', 'corridor_dist_km', 'protected_dist_km'],
@@ -190,7 +190,7 @@ class WildlifeRiskModel:
                 scale_pos_weight=float((y_train == 0).sum()) / float((y_train == 1).sum()),
                 eval_metric='logloss', random_state=42,
             ),
-            X, y, cv=cv, scoring="roc_auc", n_jobs=-1,
+            X, y, cv=cv, scoring="roc_auc", n_jobs=1,
         )
         self.xgb_metrics["cv_roc_auc_mean"] = round(float(xgb_cv.mean()), 4)
         self.xgb_metrics["cv_roc_auc_std"]  = round(float(xgb_cv.std()), 4)
@@ -200,7 +200,7 @@ class WildlifeRiskModel:
                 n_estimators=300, max_depth=12,
                 class_weight="balanced", random_state=42, n_jobs=-1,
             ),
-            X, y, cv=cv, scoring="roc_auc", n_jobs=-1,
+            X, y, cv=cv, scoring="roc_auc", n_jobs=1,
         )
         self.rf_metrics["cv_roc_auc_mean"] = round(float(rf_cv.mean()), 4)
         self.rf_metrics["cv_roc_auc_std"]  = round(float(rf_cv.std()), 4)

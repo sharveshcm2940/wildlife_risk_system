@@ -1,6 +1,8 @@
 """
 Synthetic Wildlife-Vehicle Collision Data Generator
 Generates realistic training data for the WVC Risk Prediction System
+Covers both South India (Western Ghats) and Central India wildlife corridors
+with highway segment-level resolution
 """
 
 import numpy as np
@@ -9,16 +11,58 @@ from scipy.stats import gaussian_kde
 
 np.random.seed(42)
 
-# ── Geographic bounds (India – Western Ghats / Central India wildlife corridors) ──
-LAT_MIN, LAT_MAX = 18.5, 24.5
+# ── Geographic bounds (India — full wildlife corridor coverage) ──────────────
+LAT_MIN, LAT_MAX = 8.5, 24.5
 LON_MIN, LON_MAX = 74.0, 82.0
 
-# Wildlife hotspot centroids
-HOTSPOTS = [
-    (20.9, 76.0), (21.5, 80.5), (23.1, 78.8),
-    (19.8, 77.2), (22.3, 75.5), (23.8, 81.0),
-    (20.2, 79.5), (21.0, 77.8),
+# ── Highway segments (real corridors through forest reserves) ────────────────
+# South India — Western Ghats highways that intersect forest reserves
+SOUTH_INDIA_HIGHWAY_SEGMENTS = [
+    # NH-766 Mysore-Wayanad (Bandipur corridor)
+    {"name": "NH-766 Bandipur-Wayanad", "lat": 11.66, "lon": 76.63, "state": "Karnataka", "risk_base": 0.85},
+    {"name": "NH-766 Gundlupet Stretch", "lat": 11.78, "lon": 76.67, "state": "Karnataka", "risk_base": 0.80},
+    {"name": "NH-766 Sultan Bathery", "lat": 11.66, "lon": 76.24, "state": "Kerala", "risk_base": 0.75},
+    # NH-181 Mysore-Ooty (Mudumalai corridor)
+    {"name": "NH-181 Mudumalai Stretch", "lat": 11.56, "lon": 76.55, "state": "Tamil Nadu", "risk_base": 0.88},
+    {"name": "NH-181 Theppakadu", "lat": 11.53, "lon": 76.53, "state": "Tamil Nadu", "risk_base": 0.82},
+    {"name": "NH-181 Masinagudi", "lat": 11.57, "lon": 76.65, "state": "Tamil Nadu", "risk_base": 0.78},
+    # Nagarhole / Rajiv Gandhi NP
+    {"name": "Nagarhole SH-33", "lat": 12.05, "lon": 76.15, "state": "Karnataka", "risk_base": 0.80},
+    {"name": "Hunsur-Nagarhole Road", "lat": 12.10, "lon": 76.20, "state": "Karnataka", "risk_base": 0.72},
+    # Sathyamangalam corridor (Tamil Nadu)
+    {"name": "NH-948 Sathyamangalam", "lat": 11.50, "lon": 77.25, "state": "Tamil Nadu", "risk_base": 0.76},
+    {"name": "Hasanur-Talavadi Road", "lat": 11.60, "lon": 77.05, "state": "Tamil Nadu", "risk_base": 0.70},
+    # Periyar (Kerala)
+    {"name": "NH-183 Kumily-Periyar", "lat": 9.47, "lon": 77.17, "state": "Kerala", "risk_base": 0.72},
+    {"name": "Thekkady Forest Road", "lat": 9.50, "lon": 77.13, "state": "Kerala", "risk_base": 0.68},
+    # BR Hills (Karnataka)
+    {"name": "BR Hills Forest Road", "lat": 11.99, "lon": 77.16, "state": "Karnataka", "risk_base": 0.73},
+    {"name": "Chamarajanagar-BR Hills", "lat": 11.92, "lon": 77.05, "state": "Karnataka", "risk_base": 0.65},
+    # Coorg / Talacauvery
+    {"name": "Madikeri-Talacauvery", "lat": 12.38, "lon": 75.50, "state": "Karnataka", "risk_base": 0.58},
+    # Anamalai / Parambikulam (Tamil Nadu / Kerala border)
+    {"name": "NH-17 Anamalai Hills", "lat": 10.50, "lon": 76.95, "state": "Tamil Nadu", "risk_base": 0.70},
+    {"name": "Parambikulam Road", "lat": 10.42, "lon": 76.80, "state": "Kerala", "risk_base": 0.65},
+    # Nilgiri Biosphere
+    {"name": "NH-181 Gudalur Section", "lat": 11.50, "lon": 76.50, "state": "Tamil Nadu", "risk_base": 0.77},
+    {"name": "Kotagiri Forest Road", "lat": 11.42, "lon": 76.85, "state": "Tamil Nadu", "risk_base": 0.60},
+    # Agasthyamalai (Southernmost)
+    {"name": "Agasthyamalai Route", "lat": 8.65, "lon": 77.23, "state": "Tamil Nadu", "risk_base": 0.55},
 ]
+
+# Central India — Tiger corridors
+CENTRAL_INDIA_HIGHWAY_SEGMENTS = [
+    {"name": "NH-7 Kanha-Pench Corridor", "lat": 22.33, "lon": 80.62, "state": "Madhya Pradesh", "risk_base": 0.82},
+    {"name": "NH-44 Pench Crossing", "lat": 21.72, "lon": 79.30, "state": "Madhya Pradesh", "risk_base": 0.78},
+    {"name": "Tadoba NH-6 Stretch", "lat": 20.20, "lon": 79.35, "state": "Maharashtra", "risk_base": 0.75},
+    {"name": "Satpura Forest Road", "lat": 22.52, "lon": 78.12, "state": "Madhya Pradesh", "risk_base": 0.70},
+    {"name": "Melghat NH-6", "lat": 21.40, "lon": 77.00, "state": "Maharashtra", "risk_base": 0.72},
+    {"name": "Nagzira-Navegaon Corr.", "lat": 21.10, "lon": 79.50, "state": "Maharashtra", "risk_base": 0.65},
+    {"name": "Panna NH-75 Segment", "lat": 24.72, "lon": 80.55, "state": "Madhya Pradesh", "risk_base": 0.62},
+    {"name": "Ranthambore AH-48", "lat": 26.02, "lon": 76.45, "state": "Rajasthan", "risk_base": 0.68},
+]
+
+ALL_HIGHWAY_SEGMENTS = SOUTH_INDIA_HIGHWAY_SEGMENTS + CENTRAL_INDIA_HIGHWAY_SEGMENTS
 
 ROAD_TYPES = ['highway', 'rural', 'forest_road', 'state_highway', 'national_highway']
 SPECIES     = ['tiger', 'leopard', 'elephant', 'deer', 'boar', 'wolf', 'nilgai', 'sambar']
@@ -36,18 +80,45 @@ SEASON_RISK = {'monsoon': 0.90, 'post_monsoon': 0.70,
 
 
 def generate_coords(n: int) -> tuple[np.ndarray, np.ndarray]:
-    """Cluster coords around known hotspots with spatial noise."""
+    """Generate coordinates clustered around real highway segments through forests.
+    70% of data from South India, 30% from Central India."""
     lats, lons = [], []
-    per_hotspot = n // len(HOTSPOTS)
-    for (hlat, hlon) in HOTSPOTS:
-        lats.extend(np.random.normal(hlat, 0.8, per_hotspot))
-        lons.extend(np.random.normal(hlon, 0.8, per_hotspot))
+
+    # 70% near South India highway segments
+    n_south = int(n * 0.70)
+    per_seg = n_south // len(SOUTH_INDIA_HIGHWAY_SEGMENTS)
+    for seg in SOUTH_INDIA_HIGHWAY_SEGMENTS:
+        # Tight clustering around actual highway coords (sigma ~0.15° ≈ 15km)
+        lats.extend(np.random.normal(seg["lat"], 0.15, per_seg))
+        lons.extend(np.random.normal(seg["lon"], 0.15, per_seg))
+
+    # 30% near Central India
+    n_central = n - n_south
+    per_seg_c = n_central // len(CENTRAL_INDIA_HIGHWAY_SEGMENTS)
+    for seg in CENTRAL_INDIA_HIGHWAY_SEGMENTS:
+        lats.extend(np.random.normal(seg["lat"], 0.20, per_seg_c))
+        lons.extend(np.random.normal(seg["lon"], 0.20, per_seg_c))
+
+    # Fill remainder with random points within bounds
     remainder = n - len(lats)
-    lats.extend(np.random.uniform(LAT_MIN, LAT_MAX, remainder))
-    lons.extend(np.random.uniform(LON_MIN, LON_MAX, remainder))
-    lats = np.clip(lats, LAT_MIN, LAT_MAX)
-    lons = np.clip(lons, LON_MIN, LON_MAX)
-    return np.array(lats[:n]), np.array(lons[:n])
+    if remainder > 0:
+        lats.extend(np.random.uniform(LAT_MIN, LAT_MAX, remainder))
+        lons.extend(np.random.uniform(LON_MIN, LON_MAX, remainder))
+
+    lats = np.clip(lats[:n], LAT_MIN, LAT_MAX)
+    lons = np.clip(lons[:n], LON_MIN, LON_MAX)
+    return np.array(lats), np.array(lons)
+
+
+def assign_highway_segment(lat: float, lon: float) -> str:
+    """Find nearest highway segment for each data point."""
+    best_seg, best_dist = "Unknown", 999
+    for seg in ALL_HIGHWAY_SEGMENTS:
+        dist = ((lat - seg["lat"])**2 + (lon - seg["lon"])**2)**0.5
+        if dist < best_dist:
+            best_dist = dist
+            best_seg = seg["name"]
+    return best_seg
 
 
 def generate_dataset(n: int = 12_000) -> pd.DataFrame:
@@ -58,6 +129,9 @@ def generate_dataset(n: int = 12_000) -> pd.DataFrame:
     season      = np.random.choice(SEASONS, n)
     road_type   = np.random.choice(ROAD_TYPES, n)
     species     = np.random.choice(SPECIES, n)
+
+    # Assign highway segments
+    segments = [assign_highway_segment(lats[i], lons[i]) for i in range(n)]
 
     # ── Core features ────────────────────────────────────────────────────────────
     ndvi            = np.clip(np.random.normal(0.55, 0.2, n), 0.0, 1.0)
@@ -142,6 +216,7 @@ def generate_dataset(n: int = 12_000) -> pd.DataFrame:
         # Spatial
         'latitude':          lats,
         'longitude':         lons,
+        'highway_segment':   segments,
         # Core
         'ndvi':              ndvi,
         'dist_water_km':     dist_water,
@@ -190,4 +265,7 @@ if __name__ == "__main__":
     df = generate_dataset(12_000)
     df.to_csv("wildlife_accidents.csv", index=False)
     print(f"Generated {len(df):,} records  |  Accident rate: {df['accident'].mean():.1%}")
+    print(f"South India records: {(df['latitude'] < 15).sum():,}")
+    print(f"Central India records: {(df['latitude'] >= 15).sum():,}")
+    print(f"Unique segments: {df['highway_segment'].nunique()}")
     print(df.describe().T[['mean', 'std', 'min', 'max']].to_string())

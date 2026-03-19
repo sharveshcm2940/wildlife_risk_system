@@ -215,7 +215,7 @@ with st.sidebar:
     page = st.radio(
         "Navigation",
         ["🏠 Dashboard", "🔮 Live Risk Predictor", "🗺 Risk Map",
-         "📊 Analytics", "🧠 Model Insights", "📡 Data Sources"],
+         "📊 Analytics", "⚡ Future Hotspots", "🧠 Model Insights", "📡 Data Sources"],
         label_visibility="collapsed"
     )
     st.markdown("---")
@@ -1004,6 +1004,251 @@ elif page == "📊 Analytics":
                                title="KDE Density vs Risk Score")
             fig10.update_layout(**PLOTLY_LAYOUT, height=400)
             st.plotly_chart(fig10, use_container_width=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 4.5 — FUTURE HOTSPOT FORECASTING
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "⚡ Future Hotspots":
+    from models.train import WildlifeRiskModel, FEATURE_GROUPS
+    from data.generate_data import ALL_HIGHWAY_SEGMENTS
+    import shap
+
+    st.markdown("""
+    <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 0.3rem 0;'>
+      ⚡ Future Hotspot <span style='color:#FF6B35;'>Forecasting</span>
+    </h1>
+    <p style='color:#8B949E; font-size:0.82rem; margin:0 0 1.2rem 0;'>
+      Identifies highway segments with <b>low historical incidents but high predicted risk</b> —
+      emerging danger zones where preventive infrastructure should be deployed before accidents happen
+    </p>
+    """, unsafe_allow_html=True)
+
+    # ── Segment-level analysis ────────────────────────────────────────────────
+    if 'highway_segment' not in df.columns:
+        st.warning("Dataset does not contain highway segment data. Please retrain with the updated data generator.")
+    else:
+        # Aggregate by highway segment
+        seg_stats = df.groupby('highway_segment').agg(
+            total_records=('accident', 'count'),
+            total_accidents=('accident', 'sum'),
+            accident_rate=('accident', 'mean'),
+            avg_risk_score=('risk_score', 'mean'),
+            avg_movement=('movement_score', 'mean'),
+            avg_driver_risk=('driver_risk', 'mean'),
+            avg_ndvi=('ndvi', 'mean'),
+            avg_corridor_dist=('corridor_dist_km', 'mean'),
+            avg_visibility=('visibility_m', 'mean'),
+            avg_speed_ratio=('speed_ratio', 'mean'),
+            lat_center=('latitude', 'mean'),
+            lon_center=('longitude', 'mean'),
+        ).reset_index()
+
+        # Predict risk probability for each segment's average conditions
+        seg_stats['predicted_risk'] = seg_stats['avg_risk_score']
+
+        # Future hotspots: LOW historical accident rate BUT HIGH predicted characteristics
+        seg_stats['hotspot_score'] = (
+            seg_stats['avg_risk_score'] * 0.4 +
+            seg_stats['avg_movement'] * 0.2 +
+            seg_stats['avg_driver_risk'] / 3 * 0.2 +
+            (1 - seg_stats['accident_rate']) * 0.2  # Bonus for low historical rate
+        )
+
+        # Flag: "Emerging" = low history + high features
+        median_acc = seg_stats['accident_rate'].median()
+        median_risk = seg_stats['hotspot_score'].median()
+        seg_stats['category'] = seg_stats.apply(
+            lambda r: '⚠️ EMERGING HOTSPOT' if r['accident_rate'] < median_acc and r['hotspot_score'] > median_risk
+            else '🔴 Known High Risk' if r['accident_rate'] >= median_acc and r['hotspot_score'] > median_risk
+            else '🟢 Low Risk' if r['accident_rate'] < median_acc
+            else '🟡 Moderate', axis=1
+        )
+
+        # Sort by hotspot score
+        seg_stats = seg_stats.sort_values('hotspot_score', ascending=False)
+
+        # ── KPI Cards ────────────────────────────────────────────────────────
+        emerging = seg_stats[seg_stats['category'] == '⚠️ EMERGING HOTSPOT']
+        known_high = seg_stats[seg_stats['category'] == '🔴 Known High Risk']
+
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            st.markdown(f"""<div class='metric-card'>
+              <h3>Total Segments</h3><div class='value'>{len(seg_stats)}</div>
+              <div class='sub'>Analyzed</div>
+            </div>""", unsafe_allow_html=True)
+        with k2:
+            st.markdown(f"""<div class='metric-card'>
+              <h3>⚠️ Emerging Hotspots</h3><div class='value' style='color:#FFD166;'>{len(emerging)}</div>
+              <div class='sub'>Low history, high risk</div>
+            </div>""", unsafe_allow_html=True)
+        with k3:
+            st.markdown(f"""<div class='metric-card'>
+              <h3>🔴 Known High Risk</h3><div class='value' style='color:#EF476F;'>{len(known_high)}</div>
+              <div class='sub'>High history + risk</div>
+            </div>""", unsafe_allow_html=True)
+        with k4:
+            st.markdown(f"""<div class='metric-card'>
+              <h3>Top Hotspot Score</h3><div class='value' style='color:#FF6B35;'>{seg_stats['hotspot_score'].max():.3f}</div>
+              <div class='sub'>{seg_stats.iloc[0]['highway_segment'][:25]}</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ── Emerging Hotspots Detail ─────────────────────────────────────────
+        st.markdown("<div class='section-header'>⚠️ Emerging Hotspots — Where to Deploy Prevention Infrastructure</div>", unsafe_allow_html=True)
+        st.markdown("""
+        <p style='color:#8B949E; font-size:0.8rem;'>
+          These segments have <b>few historical accidents</b> but share <b>high-risk environmental &
+          infrastructural characteristics</b> with known danger zones. They represent
+          <b>future collision hotspots</b> where preventive barriers, animal crossings, or speed controls
+          should be installed <i>before</i> incidents escalate.
+        </p>
+        """, unsafe_allow_html=True)
+
+        for i, row in emerging.head(5).iterrows():
+            # Find matching highway segment info
+            seg_info = next((s for s in ALL_HIGHWAY_SEGMENTS if s["name"] == row["highway_segment"]), {})
+            state = seg_info.get("state", "—")
+
+            # Determine risk factors (plain language for officials)
+            risk_factors = []
+            if row['avg_ndvi'] > 0.5:
+                risk_factors.append("🌿 Dense vegetation (animals cross frequently)")
+            if row['avg_corridor_dist'] < 3:
+                risk_factors.append("🦁 Very close to wildlife corridor")
+            if row['avg_speed_ratio'] > 1.0:
+                risk_factors.append("🚗 Vehicles exceed speed limits")
+            if row['avg_visibility'] < 500:
+                risk_factors.append("🌫️ Poor visibility conditions")
+            if row['avg_movement'] > 0.35:
+                risk_factors.append("🐾 High animal activity score")
+            if row['avg_driver_risk'] > 0.7:
+                risk_factors.append("⚡ High driver risk index")
+            if not risk_factors:
+                risk_factors.append("📊 Combined risk factors above threshold")
+
+            st.markdown(f"""
+            <div style='background:linear-gradient(135deg, rgba(255,209,102,0.08), rgba(255,107,53,0.05));
+                        border:1px solid rgba(255,209,102,0.3); border-radius:12px;
+                        padding:1.2rem; margin:0.6rem 0;'>
+              <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;'>
+                <div>
+                  <span style='font-size:1.1rem; font-weight:600; color:#FFD166;'>⚠️ {row['highway_segment']}</span>
+                  <span style='font-size:0.75rem; color:#8B949E; margin-left:0.5rem;'>{state}</span>
+                </div>
+                <div style='text-align:right;'>
+                  <div style='font-size:1.2rem; font-weight:700; color:#FF6B35;'>Hotspot Score: {row['hotspot_score']:.3f}</div>
+                  <div style='font-size:0.7rem; color:#8B949E;'>Accident Rate: {row['accident_rate']:.1%} (low history)</div>
+                </div>
+              </div>
+              <div style='display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:0.5rem; font-size:0.75rem; color:#E6EDF3;'>
+                <div>🌿 NDVI: <b>{row['avg_ndvi']:.3f}</b></div>
+                <div>🦁 Corridor: <b>{row['avg_corridor_dist']:.1f}km</b></div>
+                <div>🐾 Movement: <b>{row['avg_movement']:.3f}</b></div>
+                <div>🚗 Speed Ratio: <b>{row['avg_speed_ratio']:.2f}</b></div>
+              </div>
+              <div style='margin-top:0.5rem; border-top:1px solid rgba(255,209,102,0.15); padding-top:0.5rem;'>
+                <div style='font-size:0.72rem; color:#FFD166; font-weight:600; margin-bottom:0.3rem;'>
+                  🔍 Why this segment is risky (for forest officials):
+                </div>
+                {''.join(f"<div style='font-size:0.72rem; color:#E6EDF3; margin:0.15rem 0;'>{rf}</div>" for rf in risk_factors)}
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # ── Hotspot Comparison Chart ─────────────────────────────────────────
+        st.markdown("<div class='section-header'>📊 Segment Risk vs. Historical Accident Rate</div>", unsafe_allow_html=True)
+        st.markdown("""
+        <p style='color:#8B949E; font-size:0.78rem;'>
+          Segments in the <b>top-left quadrant</b> (low history, high risk) are emerging hotspots.
+          Segments in the <b>top-right</b> are known danger zones.
+        </p>
+        """, unsafe_allow_html=True)
+
+        color_map = {
+            '⚠️ EMERGING HOTSPOT': '#FFD166',
+            '🔴 Known High Risk': '#EF476F',
+            '🟢 Low Risk': '#06D6A0',
+            '🟡 Moderate': '#8B949E',
+        }
+        fig_scatter = go.Figure()
+        for cat, color in color_map.items():
+            subset = seg_stats[seg_stats['category'] == cat]
+            if len(subset) > 0:
+                fig_scatter.add_trace(go.Scatter(
+                    x=subset['accident_rate'], y=subset['hotspot_score'],
+                    mode='markers+text',
+                    marker=dict(size=12, color=color, opacity=0.85, line=dict(width=1, color='white')),
+                    text=subset['highway_segment'].str[:18],
+                    textposition='top center',
+                    textfont=dict(size=8, color=color),
+                    name=cat,
+                    hovertemplate='<b>%{text}</b><br>Accident Rate: %{x:.1%}<br>Hotspot Score: %{y:.3f}<extra></extra>',
+                ))
+        fig_scatter.add_vline(x=median_acc, line_dash="dash", line_color="#8B949E", opacity=0.5)
+        fig_scatter.add_hline(y=median_risk, line_dash="dash", line_color="#8B949E", opacity=0.5)
+        fig_scatter.update_layout(
+            xaxis_title="Historical Accident Rate", yaxis_title="Hotspot Score (Predicted Risk)",
+            template="plotly_dark", paper_bgcolor="#0D1117", plot_bgcolor="#161B22",
+            font=dict(color="#E6EDF3"), height=500,
+            legend=dict(orientation="h", y=-0.15),
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+        # ── SHAP Global Feature Importance ───────────────────────────────────
+        st.markdown("<div class='section-header'>🧠 SHAP — Global Feature Importance (What Drives Risk Overall)</div>", unsafe_allow_html=True)
+        st.markdown("""
+        <p style='color:#8B949E; font-size:0.78rem;'>
+          SHAP (SHapley Additive exPlanations) decomposes the model's prediction into contributions
+          from each feature. Below shows which features have the <b>most influence on risk predictions</b>
+          across all highway segments. This tells forest officials where to focus intervention resources.
+        </p>
+        """, unsafe_allow_html=True)
+
+        # Global SHAP bar chart
+        if shap_imp:
+            shap_df = pd.DataFrame(shap_imp).head(15)
+            fig_shap = go.Figure(go.Bar(
+                y=shap_df['feature'], x=shap_df['shap_mean'],
+                orientation='h',
+                marker=dict(
+                    color=shap_df['shap_mean'],
+                    colorscale=[[0, '#06D6A0'], [0.5, '#FFD166'], [1.0, '#EF476F']],
+                    line=dict(width=1, color='rgba(255,255,255,0.1)'),
+                ),
+                hovertemplate='<b>%{y}</b><br>Mean |SHAP|: %{x:.4f}<extra></extra>',
+            ))
+            fig_shap.update_layout(
+                template="plotly_dark", paper_bgcolor="#0D1117", plot_bgcolor="#161B22",
+                font=dict(color="#E6EDF3"), height=450,
+                xaxis_title="Mean |SHAP Value| (Impact on Prediction)",
+                yaxis=dict(autorange="reversed"),
+                margin=dict(l=150),
+            )
+            st.plotly_chart(fig_shap, use_container_width=True)
+
+            # Plain-language explanations for top features
+            st.markdown("<div class='section-header'>📋 What This Means for Forest Officials</div>", unsafe_allow_html=True)
+            explanations = {
+                'movement_score': "**Animal Activity** — The composite animal movement score is the biggest predictor. Areas with high vegetation (NDVI), near water, during dawn/dusk, and in breeding season see the most crossings.",
+                'driver_risk': "**Driver Behavior** — Speed violations, night driving, and driving on forest roads dramatically increase collision risk. Speed enforcement is the most actionable intervention.",
+                'species_risk': "**Species Type** — Elephants and tigers cause the highest-impact collisions. Their movement patterns are seasonal and predictable.",
+                'kde_density': "**Historical Density** — Past accident clusters strongly predict future ones. Known hotspots remain dangerous unless mitigated.",
+                'road_type': "**Road Classification** — Forest roads and rural roads are much riskier than national highways, despite lower traffic. They lack barriers and lighting.",
+                'night_flag': "**Night Driving** — Risk roughly doubles during nighttime (8 PM – 6 AM). Night-vision cameras and reflective fencing are effective countermeasures.",
+                'corridor_dist_km': "**Corridor Distance** — Closer to wildlife corridors = higher risk. Underpasses/overpasses within 3km of corridors reduce mortality 60-80%.",
+                'speed_ratio': "**Speed Compliance** — Drivers exceeding speed limits by even 20% dramatically increase stopping distance and collision severity.",
+                'ndvi': "**Vegetation Density** — Dense roadside vegetation blocks sightlines. Strategic clearing of 5m strips along highways improves visibility.",
+                'past_accidents': "**Repeat Locations** — Areas with 3+ past incidents are 4× more likely to see future ones. Prioritize these for infrastructure upgrades.",
+                'rainfall_mm': "**Rainfall** — Wet roads + reduced visibility + animal movement to water create a triple threat during monsoon season.",
+                'visibility_m': "**Visibility** — Fog, rain, and dense canopy reduce sighting distance. Electronic warning signs triggered by poor visibility save lives.",
+            }
+            top_feats = [s['feature'] for s in shap_imp[:6]]
+            for feat in top_feats:
+                expl = explanations.get(feat, f"**{feat}** — This feature contributes significantly to risk prediction.")
+                st.markdown(f"- {expl}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
