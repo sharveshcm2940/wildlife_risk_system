@@ -26,7 +26,7 @@ SOUTH_INDIA_HIGHWAY_SEGMENTS = [
     {"name": "NH-181 Mudumalai Stretch", "lat": 11.56, "lon": 76.55, "state": "Tamil Nadu", "risk_base": 0.88},
     {"name": "NH-181 Theppakadu", "lat": 11.53, "lon": 76.53, "state": "Tamil Nadu", "risk_base": 0.82},
     {"name": "NH-181 Masinagudi", "lat": 11.57, "lon": 76.65, "state": "Tamil Nadu", "risk_base": 0.78},
-    # Nagarhole / Rajiv Gandhi NP
+    # Nagarhole / Rajiv Gandhi NP 
     {"name": "Nagarhole SH-33", "lat": 12.05, "lon": 76.15, "state": "Karnataka", "risk_base": 0.80},
     {"name": "Hunsur-Nagarhole Road", "lat": 12.10, "lon": 76.20, "state": "Karnataka", "risk_base": 0.72},
     # Sathyamangalam corridor (Tamil Nadu)
@@ -176,7 +176,7 @@ def generate_dataset(n: int = 12_000) -> pd.DataFrame:
     road_width      = np.random.choice([4, 6, 7, 10, 14], n)  # metres
     protected_dist  = np.abs(np.random.exponential(5, n))      # km to nearest PA
     temperature     = np.random.normal(28, 8, n)               # °C
-    humidity        = np.clip(np.random.normal(65, 20, n), 20, 100)
+    humidity        = np.clip(np.random.normal(65, 20, n), 20, 100) 
 
     # Rolling 7-day trend (synthetic autocorrelation signal)
     rolling_7day    = past_accidents * np.random.uniform(0.8, 1.3, n)
