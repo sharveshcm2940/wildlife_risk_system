@@ -678,6 +678,87 @@ hr { border-color: var(--border) !important; opacity: 0.5 !important; }
   color: var(--cyan);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   13. ALERT SYSTEM — severity badges, pulse animations
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes alert-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,61,90,0.4); }
+  50%      { box-shadow: 0 0 0 6px rgba(255,61,90,0); }
+}
+.alert-badge-critical {
+  background: rgba(213,0,249,0.12);
+  border: 1px solid #d500f9;
+  color: #d500f9;
+  padding: 0.15rem 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  animation: alert-pulse 2s ease-in-out infinite;
+}
+.alert-badge-high {
+  background: rgba(255,61,90,0.12);
+  border: 1px solid #ff3d5a;
+  color: #ff3d5a;
+  padding: 0.15rem 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.alert-badge-medium {
+  background: rgba(255,176,32,0.12);
+  border: 1px solid #ffb020;
+  color: #ffb020;
+  padding: 0.15rem 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.alert-badge-low {
+  background: rgba(0,230,118,0.12);
+  border: 1px solid #00e676;
+  color: #00e676;
+  padding: 0.15rem 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   14. NDVI VEGETATION GAUGE — color zones
+   ═══════════════════════════════════════════════════════════════════════════ */
+.ndvi-zone-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0.5rem 0;
+}
+.ndvi-zone-bar .zone { transition: all 0.3s ease; }
+.ndvi-zone-bar .zone:hover { height: 10px; margin-top: -2px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   15. MOVEMENT TRAIL — animated corridor lines
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes trail-dash {
+  0%   { stroke-dashoffset: 20; }
+  100% { stroke-dashoffset: 0; }
+}
+.movement-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  background: rgba(0,229,255,0.06);
+  border: 1px solid rgba(0,229,255,0.15);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--cyan);
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -816,7 +897,8 @@ with st.sidebar:
     page = st.radio(
         "Navigation",
         ["🏠 Dashboard", "🔮 Live Risk Predictor", "🗺 Risk Map",
-         "📊 Analytics", "⚡ Future Hotspots", "🧠 Model Insights", "📡 Data Sources"],
+         "📊 Analytics", "⚡ Future Hotspots", "🧠 Model Insights", "📡 Data Sources",
+         "🦁 Animal Movement", "🌿 NDVI Prediction", "🚨 Alert System"],
         label_visibility="collapsed"
     )
     st.markdown("---")
@@ -2366,3 +2448,527 @@ elif page == "📡 Data Sources":
     └─────────────────────────────────────────────────────────────────────┘
     ```
     """)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 7 — ANIMAL MOVEMENT TRACKING
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "🦁 Animal Movement":
+    from utils.helpers import (
+        movement_score_by_species, movement_hourly_heatmap,
+        movement_corridor_chart, movement_seasonal_chart,
+        movement_timeline_chart, PALETTE
+    )
+
+    st.markdown("""
+    <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 0.3rem 0;'>
+      🦁 Animal <span style='color:#00e5ff;'>Movement Tracking</span>
+    </h1>
+    <p style='color:#8B949E; font-size:0.82rem; margin:0 0 1.5rem 0;'>
+      Species movement patterns, corridor proximity analysis, and activity timelines
+    </p>
+    """, unsafe_allow_html=True)
+
+    # ── Movement Overview Metrics ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 Movement Intelligence Summary</div>", unsafe_allow_html=True)
+
+    avg_movement = df["movement_score"].mean()
+    max_movement = df["movement_score"].max()
+    high_movement_pct = (df["movement_score"] > 0.4).mean() * 100
+    dawn_dusk_pct = df["dawn_dusk"].mean() * 100
+    breeding_pct = df["breeding_season"].mean() * 100
+    night_pct = df["night_flag"].mean() * 100
+
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["accent1"]};'>
+      <div class='metric-label'>Avg Movement Score</div>
+      <div class='metric-value' style='color:{PALETTE["accent1"]};'>{avg_movement:.3f}</div>
+    </div>""", unsafe_allow_html=True)
+    m2.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["high"]};'>
+      <div class='metric-label'>Peak Movement</div>
+      <div class='metric-value' style='color:{PALETTE["high"]};'>{max_movement:.3f}</div>
+    </div>""", unsafe_allow_html=True)
+    m3.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["accent3"]};'>
+      <div class='metric-label'>High Movement Rate</div>
+      <div class='metric-value' style='color:{PALETTE["accent3"]};'>{high_movement_pct:.1f}%</div>
+    </div>""", unsafe_allow_html=True)
+    m4.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["orange"]};'>
+      <div class='metric-label'>Dawn/Dusk Activity</div>
+      <div class='metric-value' style='color:{PALETTE["orange"]};'>{dawn_dusk_pct:.1f}%</div>
+    </div>""", unsafe_allow_html=True)
+    m5.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["purple"]};'>
+      <div class='metric-label'>Breeding Season</div>
+      <div class='metric-value' style='color:{PALETTE["purple"]};'>{breeding_pct:.1f}%</div>
+    </div>""", unsafe_allow_html=True)
+    m6.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["blue"]};'>
+      <div class='metric-label'>Nocturnal Activity</div>
+      <div class='metric-value' style='color:{PALETTE["blue"]};'>{night_pct:.1f}%</div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── 24-Hour Movement Timeline ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🕐 24-Hour Movement Activity Timeline</div>", unsafe_allow_html=True)
+    st.plotly_chart(movement_timeline_chart(df), use_container_width=True)
+
+    # ── Species Movement Radar ────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🎯 Species Movement Profiles</div>", unsafe_allow_html=True)
+    col_radar, col_heatmap = st.columns(2)
+    with col_radar:
+        st.plotly_chart(movement_score_by_species(df), use_container_width=True)
+    with col_heatmap:
+        st.plotly_chart(movement_hourly_heatmap(df), use_container_width=True)
+
+    # ── Corridor Proximity Analysis ───────────────────────────────────────────
+    st.markdown("<div class='section-header'>🛤️ Wildlife Corridor Proximity Analysis</div>", unsafe_allow_html=True)
+    st.plotly_chart(movement_corridor_chart(df), use_container_width=True)
+
+    # ── Seasonal Movement Patterns ────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🌦️ Seasonal Movement Patterns</div>", unsafe_allow_html=True)
+    st.plotly_chart(movement_seasonal_chart(df), use_container_width=True)
+
+    # ── Movement Corridor Map ─────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🗺️ Movement Corridor Heatmap</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <p style='color:#8B949E; font-size:0.75rem;'>
+      Hotspot density map showing areas with highest animal movement activity.
+      Warmer colors indicate higher movement scores and greater wildlife crossing risk.
+    </p>
+    """, unsafe_allow_html=True)
+
+    import folium
+    from folium.plugins import HeatMap as FHeatMap
+
+    high_movement = df[df["movement_score"] > 0.35]
+    m_map = folium.Map(location=[16.0, 78.0], zoom_start=6, tiles="CartoDB dark_matter")
+    heat_data = [[r["latitude"], r["longitude"], r["movement_score"]]
+                 for _, r in high_movement.head(2000).iterrows()]
+    FHeatMap(
+        heat_data, min_opacity=0.3, max_zoom=14, radius=20, blur=18,
+        gradient={"0.2": "#06D6A0", "0.5": "#FFD166", "0.75": "#EF476F", "1.0": "#B5179E"},
+    ).add_to(m_map)
+
+    # Add wildlife corridor lines
+    corridors = [
+        {"name": "Western Ghats Corridor", "points": [[12.5, 75.5], [14.0, 75.0], [16.0, 74.5]]},
+        {"name": "Nilgiri-Eastern Ghats", "points": [[11.5, 76.5], [12.0, 77.5], [13.0, 78.0]]},
+        {"name": "Central India Tiger Corridor", "points": [[20.0, 79.0], [21.5, 79.5], [23.0, 80.0]]},
+        {"name": "Satpura-Maikal Corridor", "points": [[22.0, 77.5], [22.5, 78.5], [23.0, 79.0]]},
+    ]
+    for corridor in corridors:
+        folium.PolyLine(
+            corridor["points"], color="#00e5ff", weight=3, opacity=0.7,
+            popup=corridor["name"], dash_array="10 5",
+        ).add_to(m_map)
+
+    from streamlit_folium import st_folium
+    st_folium(m_map, width=None, height=500, returned_objects=[])
+
+    # ── Movement vs Risk Correlation ──────────────────────────────────────────
+    st.markdown("<div class='section-header'>📈 Movement Score vs Accident Risk</div>", unsafe_allow_html=True)
+    import plotly.graph_objects as go
+    bins = pd.cut(df["movement_score"], bins=10)
+    risk_by_movement = df.groupby(bins, observed=True).agg(
+        avg_risk=("risk_score", "mean"),
+        accident_rate=("accident", "mean"),
+        count=("accident", "count"),
+    ).reset_index()
+    risk_by_movement["label"] = risk_by_movement["movement_score"].astype(str)
+
+    fig_mr = go.Figure()
+    fig_mr.add_trace(go.Bar(
+        x=risk_by_movement["label"], y=risk_by_movement["count"],
+        name="Sample Count", marker_color=PALETTE["accent2"], opacity=0.4, yaxis="y2",
+    ))
+    fig_mr.add_trace(go.Scatter(
+        x=risk_by_movement["label"], y=risk_by_movement["accident_rate"],
+        mode="lines+markers", name="Accident Rate",
+        line=dict(color=PALETTE["high"], width=3), marker=dict(size=10),
+    ))
+    fig_mr.add_trace(go.Scatter(
+        x=risk_by_movement["label"], y=risk_by_movement["avg_risk"],
+        mode="lines+markers", name="Avg Risk Score",
+        line=dict(color=PALETTE["accent1"], width=2, dash="dot"), marker=dict(size=7),
+    ))
+    from utils.helpers import PLOTLY_LAYOUT, _AX
+    fig_mr.update_layout(
+        **PLOTLY_LAYOUT,
+        title="Movement Score Bins vs Accident Risk & Risk Score",
+        xaxis=dict(title="Movement Score Range", tickangle=-45, **_AX),
+        yaxis=dict(title="Rate / Score", **_AX),
+        yaxis2=dict(title="Count", overlaying="y", side="right", **_AX),
+        legend=dict(x=0.01, y=0.99, bgcolor=PALETTE["surface"]),
+        height=420,
+    )
+    st.plotly_chart(fig_mr, use_container_width=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 8 — NDVI PREDICTION INDEX
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "🌿 NDVI Prediction":
+    from utils.helpers import (
+        ndvi_distribution_chart, ndvi_seasonal_trend,
+        ndvi_risk_correlation, ndvi_species_habitat,
+        ndvi_prediction_gauge, ndvi_road_type_chart,
+        NDVI_ZONES, PALETTE, PLOTLY_LAYOUT, _AX
+    )
+    import plotly.graph_objects as go
+
+    st.markdown("""
+    <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 0.3rem 0;'>
+      🌿 NDVI <span style='color:#00e676;'>Prediction Index</span>
+    </h1>
+    <p style='color:#8B949E; font-size:0.82rem; margin:0 0 1.5rem 0;'>
+      Vegetation health analysis, seasonal forecasting, and risk correlation for wildlife habitats
+    </p>
+    """, unsafe_allow_html=True)
+
+    # ── NDVI Overview Metrics ─────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🌍 Vegetation Health Summary</div>", unsafe_allow_html=True)
+
+    avg_ndvi = df["ndvi"].mean()
+    std_ndvi = df["ndvi"].std()
+    dense_pct = (df["ndvi"] > 0.5).mean() * 100
+    barren_pct = (df["ndvi"] < 0.15).mean() * 100
+
+    # Classify current average into NDVI zone
+    zone_label = "Unknown"
+    zone_color = PALETTE["muted"]
+    for lo, hi, label, color, desc in NDVI_ZONES:
+        if lo <= avg_ndvi < hi or (avg_ndvi >= 0.70 and hi == 1.00):
+            zone_label = label
+            zone_color = color
+            break
+
+    n1, n2, n3, n4, n5 = st.columns(5)
+    n1.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {zone_color};'>
+      <div class='metric-label'>Mean NDVI</div>
+      <div class='metric-value' style='color:{zone_color};'>{avg_ndvi:.3f}</div>
+      <div style='font-size:0.6rem; color:{zone_color}; margin-top:0.2rem;'>{zone_label}</div>
+    </div>""", unsafe_allow_html=True)
+    n2.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["accent1"]};'>
+      <div class='metric-label'>NDVI Std Dev</div>
+      <div class='metric-value' style='color:{PALETTE["accent1"]};'>{std_ndvi:.3f}</div>
+    </div>""", unsafe_allow_html=True)
+    n3.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["accent2"]};'>
+      <div class='metric-label'>Dense Vegetation</div>
+      <div class='metric-value' style='color:{PALETTE["accent2"]};'>{dense_pct:.1f}%</div>
+    </div>""", unsafe_allow_html=True)
+    n4.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["high"]};'>
+      <div class='metric-label'>Barren Areas</div>
+      <div class='metric-value' style='color:{PALETTE["high"]};'>{barren_pct:.1f}%</div>
+    </div>""", unsafe_allow_html=True)
+    n5.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["accent3"]};'>
+      <div class='metric-label'>Observations</div>
+      <div class='metric-value' style='color:{PALETTE["accent3"]};'>{len(df):,}</div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── NDVI Prediction Gauge ─────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🎯 NDVI Health Gauge & Zone Classification</div>", unsafe_allow_html=True)
+    col_gauge, col_zones = st.columns([1, 1.5])
+    with col_gauge:
+        st.plotly_chart(ndvi_prediction_gauge(avg_ndvi), use_container_width=True)
+    with col_zones:
+        st.markdown("""
+        <div style='padding:0.5rem;'>
+          <div style='font-family:"IBM Plex Mono",monospace; font-size:0.6rem; color:#3a4a5c; letter-spacing:0.15em; margin-bottom:0.5rem;'>▸ NDVI ZONE CLASSIFICATION</div>
+        """, unsafe_allow_html=True)
+        for lo, hi, label, color, desc in NDVI_ZONES:
+            count = len(df[(df["ndvi"] >= lo) & (df["ndvi"] < hi)])
+            pct = count / len(df) * 100
+            st.markdown(f"""
+            <div style='display:flex; align-items:center; gap:0.5rem; margin:0.35rem 0; padding:0.3rem 0.5rem;
+                        background:rgba(13,19,32,0.6); border-radius:4px; border-left:3px solid {color};'>
+              <div style='width:12px; height:12px; background:{color}; border-radius:2px;'></div>
+              <div style='flex:1;'>
+                <div style='font-size:0.75rem; color:{color}; font-weight:600;'>{label} ({lo:.2f}–{hi:.2f})</div>
+                <div style='font-size:0.6rem; color:#8B949E;'>{desc}</div>
+              </div>
+              <div style='text-align:right;'>
+                <div style='font-size:0.7rem; color:#c8d6e5;'>{count:,}</div>
+                <div style='font-size:0.55rem; color:#5a6d82;'>{pct:.1f}%</div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── NDVI Distribution ─────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 NDVI Distribution & Vegetation Zones</div>", unsafe_allow_html=True)
+    st.plotly_chart(ndvi_distribution_chart(df), use_container_width=True)
+
+    # ── Seasonal Trend & Forecast ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📅 Seasonal NDVI Variation & Forecast</div>", unsafe_allow_html=True)
+    col_season, col_forecast = st.columns(2)
+    with col_season:
+        st.plotly_chart(ndvi_seasonal_trend(df), use_container_width=True)
+    with col_forecast:
+        # NDVI Forecast - Simple predictive model based on seasonal patterns
+        season_avg = df.groupby("season")["ndvi"].mean()
+        season_order = ["summer", "monsoon", "post_monsoon", "winter"]
+        forecast_months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        season_map = {
+            "Jan": "winter", "Feb": "winter", "Mar": "summer",
+            "Apr": "summer", "May": "summer", "Jun": "monsoon",
+            "Jul": "monsoon", "Aug": "monsoon", "Sep": "post_monsoon",
+            "Oct": "post_monsoon", "Nov": "post_monsoon", "Dec": "winter",
+        }
+        forecast_vals = []
+        for month in forecast_months:
+            base = season_avg.get(season_map[month], avg_ndvi)
+            noise = np.random.normal(0, 0.02)
+            forecast_vals.append(np.clip(base + noise, 0, 1))
+
+        fig_forecast = go.Figure()
+        fig_forecast.add_trace(go.Scatter(
+            x=forecast_months, y=forecast_vals,
+            mode="lines+markers", name="NDVI Forecast",
+            line=dict(color=PALETTE["accent2"], width=3),
+            marker=dict(size=10),
+            fill="tozeroy", fillcolor="rgba(0,230,118,0.08)",
+        ))
+        # Add risk threshold line
+        fig_forecast.add_hline(y=0.3, line_dash="dash", line_color=PALETTE["high"],
+                               annotation_text="Risk Threshold", annotation_position="top right")
+        fig_forecast.update_layout(
+            **PLOTLY_LAYOUT,
+            title="12-Month NDVI Forecast (Seasonal Model)",
+            xaxis=dict(title="Month", **_AX),
+            yaxis=dict(title="Predicted NDVI", range=[0, 1], **_AX),
+            height=400,
+        )
+        st.plotly_chart(fig_forecast, use_container_width=True)
+
+    # ── NDVI vs Risk Correlation ──────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🔗 NDVI–Risk Correlation Matrix</div>", unsafe_allow_html=True)
+    st.plotly_chart(ndvi_risk_correlation(df), use_container_width=True)
+
+    # ── Species Habitat Preference ────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🐾 Species Habitat NDVI Preference</div>", unsafe_allow_html=True)
+    col_habitat, col_road = st.columns(2)
+    with col_habitat:
+        st.plotly_chart(ndvi_species_habitat(df), use_container_width=True)
+    with col_road:
+        st.plotly_chart(ndvi_road_type_chart(df), use_container_width=True)
+
+    # ── NDVI Prediction Table ─────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📋 NDVI Statistics by Highway Segment</div>", unsafe_allow_html=True)
+    seg_stats = df.groupby("highway_segment").agg(
+        mean_ndvi=("ndvi", "mean"),
+        std_ndvi=("ndvi", "std"),
+        min_ndvi=("ndvi", "min"),
+        max_ndvi=("ndvi", "max"),
+        avg_risk=("risk_score", "mean"),
+        samples=("ndvi", "count"),
+    ).round(3).sort_values("mean_ndvi", ascending=False).reset_index()
+    st.dataframe(
+        seg_stats.style.background_gradient(subset=["mean_ndvi"], cmap="YlGn")
+                       .background_gradient(subset=["avg_risk"], cmap="YlOrRd"),
+        use_container_width=True, height=400,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 9 — ALERT SYSTEM
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "🚨 Alert System":
+    from utils.helpers import (
+        generate_alerts, alert_severity_chart, alert_type_chart,
+        alert_hourly_chart, alert_species_chart,
+        ALERT_SEVERITY, PALETTE, PLOTLY_LAYOUT, _AX
+    )
+    import plotly.graph_objects as go
+
+    st.markdown("""
+    <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 0.3rem 0;'>
+      🚨 Alert <span style='color:#ff3d5a;'>System</span>
+    </h1>
+    <p style='color:#8B949E; font-size:0.82rem; margin:0 0 1.5rem 0;'>
+      Real-time wildlife risk alerts with configurable thresholds and severity classification
+    </p>
+    """, unsafe_allow_html=True)
+
+    # ── Alert Configuration ───────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>⚙️ Alert Configuration</div>", unsafe_allow_html=True)
+    cfg1, cfg2, cfg3, cfg4 = st.columns(4)
+    with cfg1:
+        risk_thresh = st.slider("Risk Score Threshold", 0.3, 0.95, 0.65, 0.05,
+                                help="Trigger alerts when risk score exceeds this value")
+    with cfg2:
+        corridor_thresh = st.slider("Corridor Distance (km)", 0.5, 10.0, 2.0, 0.5,
+                                    help="Alert when vehicle is within this distance of a wildlife corridor")
+    with cfg3:
+        visibility_thresh = st.slider("Visibility Threshold (m)", 50, 800, 300, 50,
+                                      help="Alert when visibility drops below this value")
+    with cfg4:
+        speed_thresh = st.slider("Speed Ratio Threshold", 1.0, 2.0, 1.2, 0.1,
+                                 help="Alert when speed exceeds posted limit by this ratio")
+
+    # Generate alerts based on configuration
+    alerts = generate_alerts(df, risk_thresh, corridor_thresh, visibility_thresh, speed_thresh)
+    total_alerts = len(alerts)
+    critical_count = sum(1 for a in alerts if a["severity"] == "CRITICAL")
+    high_count = sum(1 for a in alerts if a["severity"] == "HIGH")
+    medium_count = sum(1 for a in alerts if a["severity"] == "MEDIUM")
+    low_count = sum(1 for a in alerts if a["severity"] == "LOW")
+
+    # ── Alert Summary Metrics ─────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 Alert Summary</div>", unsafe_allow_html=True)
+    a1, a2, a3, a4, a5 = st.columns(5)
+    a1.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {PALETTE["accent1"]};'>
+      <div class='metric-label'>Total Alerts</div>
+      <div class='metric-value' style='color:{PALETTE["accent1"]};'>{total_alerts}</div>
+    </div>""", unsafe_allow_html=True)
+    a2.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {ALERT_SEVERITY["CRITICAL"]["color"]};'>
+      <div class='metric-label'>🚨 Critical</div>
+      <div class='metric-value' style='color:{ALERT_SEVERITY["CRITICAL"]["color"]};'>{critical_count}</div>
+    </div>""", unsafe_allow_html=True)
+    a3.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {ALERT_SEVERITY["HIGH"]["color"]};'>
+      <div class='metric-label'>🔴 High</div>
+      <div class='metric-value' style='color:{ALERT_SEVERITY["HIGH"]["color"]};'>{high_count}</div>
+    </div>""", unsafe_allow_html=True)
+    a4.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {ALERT_SEVERITY["MEDIUM"]["color"]};'>
+      <div class='metric-label'>🟡 Medium</div>
+      <div class='metric-value' style='color:{ALERT_SEVERITY["MEDIUM"]["color"]};'>{medium_count}</div>
+    </div>""", unsafe_allow_html=True)
+    a5.markdown(f"""
+    <div class='metric-card' style='border-top:2px solid {ALERT_SEVERITY["LOW"]["color"]};'>
+      <div class='metric-label'>🟢 Low</div>
+      <div class='metric-value' style='color:{ALERT_SEVERITY["LOW"]["color"]};'>{low_count}</div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── Alert Analytics ───────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📈 Alert Analytics</div>", unsafe_allow_html=True)
+    if alerts:
+        col_sev, col_type = st.columns(2)
+        with col_sev:
+            st.plotly_chart(alert_severity_chart(alerts), use_container_width=True)
+        with col_type:
+            st.plotly_chart(alert_type_chart(alerts), use_container_width=True)
+
+        col_hour, col_species = st.columns(2)
+        with col_hour:
+            st.plotly_chart(alert_hourly_chart(alerts), use_container_width=True)
+        with col_species:
+            st.plotly_chart(alert_species_chart(alerts), use_container_width=True)
+
+    # ── Alert Map ─────────────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🗺️ Alert Locations Map</div>", unsafe_allow_html=True)
+    if alerts:
+        import folium
+        from folium.plugins import MarkerCluster as FMCluster
+
+        alert_map = folium.Map(location=[16.0, 78.0], zoom_start=6, tiles="CartoDB dark_matter")
+        cluster = FMCluster(name="Alert Locations").add_to(alert_map)
+
+        for alert in alerts[:200]:
+            sev_info = ALERT_SEVERITY[alert["severity"]]
+            folium.CircleMarker(
+                location=[alert["lat"], alert["lon"]],
+                radius=8 if alert["severity"] in ["CRITICAL", "HIGH"] else 5,
+                color=sev_info["color"],
+                fill=True,
+                fill_opacity=0.85,
+                popup=folium.Popup(
+                    f"<b>{sev_info['icon']} {alert['severity']}</b><br>"
+                    f"<b>Type:</b> {alert['type']}<br>"
+                    f"<b>Risk:</b> {alert['risk_score']:.1%}<br>"
+                    f"<b>Species:</b> {alert['species']}<br>"
+                    f"<b>Road:</b> {alert['road_type']}<br>"
+                    f"<b>Hour:</b> {alert['hour']:02d}:00<br>"
+                    f"<b>Segment:</b> {alert['segment']}<br>"
+                    f"<small>{alert['message']}</small>",
+                    max_width=280,
+                ),
+            ).add_to(cluster)
+
+        folium.LayerControl().add_to(alert_map)
+        from streamlit_folium import st_folium
+        st_folium(alert_map, width=None, height=500, returned_objects=[])
+
+    # ── Active Alert Feed ─────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📋 Active Alert Feed</div>", unsafe_allow_html=True)
+
+    # Filter controls
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        sev_filter = st.multiselect(
+            "Filter by Severity",
+            ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+            default=["CRITICAL", "HIGH"],
+        )
+    with fc2:
+        type_filter = st.multiselect(
+            "Filter by Type",
+            list(set(a["type"] for a in alerts)) if alerts else [],
+            default=[],
+        )
+
+    filtered_alerts = alerts
+    if sev_filter:
+        filtered_alerts = [a for a in filtered_alerts if a["severity"] in sev_filter]
+    if type_filter:
+        filtered_alerts = [a for a in filtered_alerts if a["type"] in type_filter]
+
+    # Display alert cards
+    for i, alert in enumerate(filtered_alerts[:50]):
+        sev_info = ALERT_SEVERITY[alert["severity"]]
+        st.markdown(f"""
+        <div style='background:rgba(13,19,32,0.7); border-left:4px solid {sev_info["color"]};
+                    padding:0.6rem 0.8rem; margin:0.4rem 0; border-radius:0 6px 6px 0;'>
+          <div style='display:flex; justify-content:space-between; align-items:center;'>
+            <div>
+              <span style='font-size:0.85rem; color:{sev_info["color"]}; font-weight:700;'>
+                {sev_info["icon"]} {alert["severity"]}
+              </span>
+              <span style='font-size:0.7rem; color:#5a6d82; margin-left:0.5rem;'>
+                {alert["type"]} · {alert["species"].capitalize()} · {alert["road_type"]}
+              </span>
+            </div>
+            <div style='font-size:0.65rem; color:#3a4a5c;'>
+              {alert["hour"]:02d}:00 · {alert["segment"]}
+            </div>
+          </div>
+          <div style='font-size:0.72rem; color:#c8d6e5; margin-top:0.3rem;'>
+            {alert["message"]}
+          </div>
+          <div style='display:flex; gap:0.8rem; margin-top:0.25rem;'>
+            <span style='font-size:0.6rem; color:#5a6d82;'>Risk: {alert["risk_score"]:.1%}</span>
+            <span style='font-size:0.6rem; color:#5a6d82;'>📍 {alert["lat"]:.3f}, {alert["lon"]:.3f}</span>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    if not filtered_alerts:
+        st.info("No alerts match the current filter criteria. Adjust thresholds or filters above.")
+
+    # ── Alert Statistics Table ────────────────────────────────────────────────
+    if alerts:
+        st.markdown("<div class='section-header'>📊 Alert Statistics by Segment</div>", unsafe_allow_html=True)
+        seg_alerts = {}
+        for a in alerts:
+            seg = a["segment"]
+            if seg not in seg_alerts:
+                seg_alerts[seg] = {"segment": seg, "total": 0, "critical": 0, "high": 0, "medium": 0, "low": 0}
+            seg_alerts[seg]["total"] += 1
+            seg_alerts[seg][a["severity"].lower()] += 1
+        alert_df = pd.DataFrame(list(seg_alerts.values())).sort_values("total", ascending=False)
+        st.dataframe(
+            alert_df.style.background_gradient(subset=["total"], cmap="YlOrRd")
+                         .background_gradient(subset=["critical"], cmap="Purples"),
+            use_container_width=True, height=400,
+        )
