@@ -815,7 +815,7 @@ with st.sidebar:
     st.markdown("---")
     page = st.radio(
         "Navigation",
-        ["🏠 Dashboard", "🔮 Live Risk Predictor", "🗺 Risk Map",
+        ["🏠 Dashboard", "🎯 Risk Intel & Map",
          "📊 Analytics", "⚡ Future Hotspots", "🧠 Model Insights", "📡 Data Sources"],
         label_visibility="collapsed"
     )
@@ -1004,44 +1004,59 @@ if page == "🏠 Dashboard":
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PAGE 2 — LIVE RISK PREDICTOR (Real-Time Data Pipeline)
+# PAGE 2 — RISK INTEL & MAP (Combined Predictor + Map)
 # ═══════════════════════════════════════════════════════════════════════════════
-elif page == "🔮 Live Risk Predictor":
+elif page == "🎯 Risk Intel & Map":
+    from streamlit_folium import st_folium
     from utils.helpers import (
         dual_risk_gauge, shap_waterfall, get_risk_level,
-        data_source_status_chart, PALETTE
+        data_source_status_chart, build_folium_map, PALETTE
     )
-    from data.realtime_extractor import RealtimeDataExtractor, geocode_place, PROTECTED_AREAS, WILDLIFE_CORRIDORS
+    from data.realtime_extractor import RealtimeDataExtractor, geocode_place, PROTECTED_AREAS, WILDLIFE_CORRIDORS, _haversine
+    import folium
+    from folium.plugins import HeatMap, MarkerCluster
+
+    # ── Tile Layers (using subdomains for speed) ──────────────────────────────
+    GOOGLE_SAT   = "https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+    GOOGLE_HYB   = "https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
+    GOOGLE_ROAD  = "https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
+    ESRI_SAT     = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    GOOGLE_SUBS  = ["0","1","2","3"]  # Parallel tile loading across 4 servers
 
     st.markdown("""
-    <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 0.3rem 0;'>
-      🔮 Live <span style='color:#FF6B35;'>Risk Prediction</span> Pipeline
-    </h1>
-    <p style='color:#8B949E; font-size:0.82rem; margin:0 0 1.2rem 0;'>
-      Search any place in India → extracts real-time data from APIs, news sites & govt portals → dual-model prediction
-    </p>
+    <div style='margin-bottom:1rem;'>
+      <div style='font-family:"IBM Plex Mono",monospace; font-size:0.5rem; color:#3a4a5c; letter-spacing:0.25em; margin-bottom:0.3rem;'>
+        ▸ TACTICAL RISK ASSESSMENT // SEARCH → EXTRACT → PREDICT → MAP
+      </div>
+      <h1 style='font-family:"Inter",sans-serif; font-size:1.8rem; font-weight:600; margin:0 0 0.15rem 0; color:#e8f0fa;'>
+        Risk <span style='color:#00e5ff;'>Intelligence</span> & Geospatial Map
+      </h1>
+      <p style='color:#5a6d82; font-size:0.78rem; margin:0; font-family:"IBM Plex Mono",monospace;'>
+        Google Maps satellite · 7-source real-time pipeline · Dual-model ensemble · SHAP explainability
+      </p>
+    </div>
     """, unsafe_allow_html=True)
 
-    # ── Location inputs: Search + Presets + Manual ────────────────────────────
+    # ── SECTION A: Location Search ────────────────────────────────────────────
     st.markdown("<div class='section-header'>📍 Search Location</div>", unsafe_allow_html=True)
 
-    # Search bar
     search_col, search_btn_col = st.columns([4, 1])
     with search_col:
         place_query = st.text_input(
             "🔍 Search any place in India",
-            placeholder="e.g., Bandipur Tiger Reserve, Mysore-Ooty Highway, Wayanad...",
+            placeholder="e.g., Bandipur, Wayanad, Mudumalai, Mysore-Ooty Highway…",
             key="place_search"
         )
     with search_btn_col:
         st.markdown("<br>", unsafe_allow_html=True)
         search_clicked = st.button("🔎 Search", use_container_width=True)
 
-    # Handle geocoding
     resolved_lat, resolved_lon = None, None
     resolved_name = ""
+    sub_locations = []
+
     if search_clicked and place_query:
-        with st.spinner(f"🌍 Geocoding '{place_query}' via Nominatim (OpenStreetMap)..."):
+        with st.spinner(f"🌍 Geocoding '{place_query}' via Nominatim…"):
             geo_result = geocode_place(place_query)
         if geo_result and geo_result.get("found"):
             resolved_lat = geo_result["lat"]
@@ -1049,14 +1064,17 @@ elif page == "🔮 Live Risk Predictor":
             resolved_name = geo_result.get("display_name", "")
             st.success(f"📍 **Found:** {resolved_name}")
             st.markdown(f"<div style='font-size:0.78rem; color:var(--muted);'>Lat: {resolved_lat:.5f} | Lon: {resolved_lon:.5f} | Type: {geo_result.get('place_type','')}</div>", unsafe_allow_html=True)
-            if len(geo_result.get("all_results", [])) > 1:
-                with st.expander("Other matching locations"):
-                    for r in geo_result["all_results"][1:]:
-                        st.markdown(f"- {r['name']} ({r['lat']:.4f}, {r['lon']:.4f})")
+            all_results = geo_result.get("all_results", [])
+            if len(all_results) > 1:
+                sub_locations = all_results
+                st.markdown(f"<div style='font-size:0.72rem; color:#00e5ff; margin-top:0.3rem;'>🎯 Found **{len(all_results)} specific locations** — all highlighted on the map</div>", unsafe_allow_html=True)
+                with st.expander(f"📌 View all {len(all_results)} matching locations"):
+                    for i, r in enumerate(all_results):
+                        st.markdown(f"**{i+1}.** {r['name']} — `{r['lat']:.4f}, {r['lon']:.4f}` · {r.get('type', '')}")
         else:
             st.error(f"❌ Could not find '{place_query}'. Try a more specific name.")
 
-    st.markdown("<div style='text-align:center; color:var(--muted); font-size:0.75rem; margin:0.3rem 0;'>─── OR select a preset ───</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; color:var(--muted); font-size:0.75rem; margin:0.3rem 0;'>─── OR select a preset wildlife zone ───</div>", unsafe_allow_html=True)
 
     PRESETS = {
         "Custom Location": (12.0, 76.5),
@@ -1080,12 +1098,10 @@ elif page == "🔮 Live Risk Predictor":
         preset = st.selectbox("Predefined Wildlife Zones", list(PRESETS.keys()))
     with c2:
         default_lat, default_lon = PRESETS[preset]
-        if resolved_lat is not None:
-            default_lat = resolved_lat
+        if resolved_lat is not None: default_lat = resolved_lat
         lat = st.number_input("Latitude", min_value=6.0, max_value=37.0, value=default_lat, step=0.01)
     with c3:
-        if resolved_lon is not None:
-            default_lon = resolved_lon
+        if resolved_lon is not None: default_lon = resolved_lon
         lon = st.number_input("Longitude", min_value=68.0, max_value=97.0, value=default_lon, step=0.01)
 
     c4, c5, c6 = st.columns(3)
@@ -1093,537 +1109,303 @@ elif page == "🔮 Live Risk Predictor":
     with c5: actual_speed = st.slider("Actual Speed (km/h)", 10, 140, 65)
     with c6: past_acc     = st.slider("Past Accident Count", 0, 30, 3)
 
+    # ── Map Layer Controls ────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🗺 Map Configuration</div>", unsafe_allow_html=True)
+    ml1, ml2, ml3 = st.columns(3)
+    with ml1:
+        base_layer = st.selectbox("Base Map", ["OpenStreetMap (Fast)", "Google Satellite Hybrid", "Google Satellite", "Google Roads", "ESRI Satellite", "Dark (CartoDB)"], index=0)
+    with ml2:
+        show_heatmap = st.checkbox("Show Risk Heatmap", value=True)
+        show_pas     = st.checkbox("Show Protected Areas", value=True)
+    with ml3:
+        show_corridors = st.checkbox("Show Wildlife Corridors", value=True)
+        show_all_data  = st.checkbox("Show All Training Data", value=False)
+
     run_btn = st.button("⚡ EXTRACT DATA & PREDICT RISK", use_container_width=True)
 
+    # ── SECTION B: EXECUTION ──────────────────────────────────────────────────
     if run_btn:
-        # ── RUN THE PIPELINE ──────────────────────────────────────────────────
         with st.spinner("📡 Extracting real-time data from APIs, news sites & govt portals…"):
             extractor = RealtimeDataExtractor()
-            feature_df = extractor.extract_all(
-                lat, lon,
-                speed_limit=speed_limit,
-                actual_speed=actual_speed,
-                past_accidents=past_acc,
-            )
+            feature_df = extractor.extract_all(lat, lon, speed_limit=speed_limit, actual_speed=actual_speed, past_accidents=past_acc)
             extraction_log = extractor.get_extraction_log()
             summary        = extractor.get_extraction_summary()
 
-        # Save to session_state so Map page can access it
         spatial_data = None
         for er in extractor.extraction_log:
             if er.source_type == "computation" and "nearest_pa" in er.data:
                 spatial_data = er.data
         st.session_state["last_prediction"] = {
-            "lat": lat, "lon": lon,
-            "location_name": resolved_name or preset,
-            "features": feature_df.iloc[0].to_dict(),
-            "log": extraction_log,
-            "summary": summary,
-            "spatial": spatial_data,
+            "lat": lat, "lon": lon, "location_name": resolved_name or preset,
+            "features": feature_df.iloc[0].to_dict(), "log": extraction_log,
+            "summary": summary, "spatial": spatial_data, "sub_locations": sub_locations,
         }
-
-        # ── DATA SOURCE STATUS ────────────────────────────────────────────────
-        st.markdown("<div class='section-header'>📡 Real-Time Data Extraction — 7 Sources</div>", unsafe_allow_html=True)
-
-        # Group by source type for display
-        api_sources  = [l for l in extraction_log if l.get('source_type') == 'api']
-        news_sources = [l for l in extraction_log if l.get('source_type') == 'news']
-        govt_sources = [l for l in extraction_log if l.get('source_type') == 'government']
-        comp_sources = [l for l in extraction_log if l.get('source_type') == 'computation']
-
-        # Row 1: APIs
-        st.markdown("**🌐 API Sources**", unsafe_allow_html=True)
-        api_cols = st.columns(max(len(api_sources), 1))
-        for i, log_entry in enumerate(api_sources):
-            with api_cols[i]:
-                si = "✅" if log_entry["status"]=="success" else "⚠️"
-                fs = ", ".join(log_entry["features"][:3])
-                st.markdown(f"<div class='source-card'><div class='source-name'>{si} {log_entry['source']}</div><div class='source-url'>{log_entry['api_url'][:70]}…</div><div style='font-size:0.72rem;'><span class='status-{log_entry["status"]}'>{log_entry['status'].upper()}</span> · {log_entry['response_ms']}ms</div><div class='source-features'>→ {fs}</div></div>", unsafe_allow_html=True)
-
-        # Row 2: News + Govt
-        ng_col1, ng_col2 = st.columns(2)
-        for col, label, sources in [(ng_col1, "📰 News Websites", news_sources), (ng_col2, "🏛️ Government Portals", govt_sources)]:
-            with col:
-                st.markdown(f"**{label}**")
-                for log_entry in sources:
-                    si = "✅" if log_entry["status"]=="success" else "⚠️"
-                    fs = ", ".join(str(f) for f in log_entry["features"][:3])
-                    st.markdown(f"<div class='source-card'><div class='source-name'>{si} {log_entry['source']}</div><div style='font-size:0.72rem;'><span class='status-{log_entry["status"]}'>{log_entry['status'].upper()}</span> · {log_entry['response_ms']}ms</div><div class='source-features'>→ {fs}</div></div>", unsafe_allow_html=True)
-
-        # Row 3: Computations
-        if comp_sources:
-            st.markdown("**🧮 Computed Sources**")
-            comp_cols = st.columns(len(comp_sources))
-            for i, log_entry in enumerate(comp_sources):
-                with comp_cols[i]:
-                    st.markdown(f"<div class='source-card'><div class='source-name'>✅ {log_entry['source']}</div><div style='font-size:0.72rem;'>SUCCESS · {log_entry['response_ms']}ms</div><div class='source-features'>→ {', '.join(log_entry['features'][:4])}</div></div>", unsafe_allow_html=True)
-
-        st.plotly_chart(data_source_status_chart(extraction_log), use_container_width=True)
-
-        # ── NEWS ARTICLES ─────────────────────────────────────────────────────
-        news_data = None
-        govt_detail = None
-        for log_entry in extraction_log:
-            if log_entry.get('source_type') == 'news':
-                # Get news data from extractor
-                for er in extractor.extraction_log:
-                    if er.source_type == 'news':
-                        news_data = er.data
-            if log_entry.get('source_type') == 'government':
-                for er in extractor.extraction_log:
-                    if er.source_type == 'government':
-                        govt_detail = er.data
-
-        if news_data and news_data.get('top_articles'):
-            st.markdown("<div class='section-header'>📰 Recent Wildlife News from Indian Media</div>", unsafe_allow_html=True)
-            nc1, nc2 = st.columns([1, 1])
-            with nc1:
-                st.markdown(f"<div class='metric-card'><h3>Wildlife Articles Found</h3><div class='value' style='font-size:1.4rem;'>{news_data.get('total_wildlife_articles',0)}</div><div class='sub'>From The Hindu, NDTV, Down to Earth, Google News</div></div>", unsafe_allow_html=True)
-            with nc2:
-                st.markdown(f"<div class='metric-card'><h3>South India Mentions</h3><div class='value' style='font-size:1.4rem;'>{news_data.get('south_india_articles',0)}</div><div class='sub'>Matching Karnataka, Kerala, Tamil Nadu</div></div>", unsafe_allow_html=True)
-            for art in news_data['top_articles'][:5]:
-                si_tag = " 🟢 South India" if art.get('south_india_match') else ""
-                sp_tag = f" | Species: {', '.join(art.get('species_mentioned',[])) }" if art.get('species_mentioned') else ""
-                st.markdown(f"- **[{art['source']}]** {art['title']}{si_tag}{sp_tag}")
-
-        if govt_detail:
-            st.markdown("<div class='section-header'>🏛️ Indian Government Portal Status</div>", unsafe_allow_html=True)
-            gs = govt_detail.get('source_status', {})
-            gc1, gc2 = st.columns(2)
-            with gc1:
-                for name, status in list(gs.items())[:4]:
-                    st.markdown(f"- **{name}**: {status}")
-            with gc2:
-                for name, status in list(gs.items())[4:]:
-                    st.markdown(f"- **{name}**: {status}")
-            st.markdown(f"📍 **Nearest State Dept**: {govt_detail.get('nearest_state_dept','')} ({govt_detail.get('nearest_state_url','')})")
 
         # ── PREDICTION RESULTS ────────────────────────────────────────────────
         st.markdown("<div class='section-header'>🤖 Dual-Model Prediction Results</div>", unsafe_allow_html=True)
-
         if model.rf_model is not None:
             results = model.predict_both(feature_df)
-            xgb_prob = results["xgb_probability"]
-            rf_prob  = results["rf_probability"]
-            avg_prob = results["avg_probability"]
-            agree    = results["agreement"]
+            xgb_prob, rf_prob, avg_prob, agree = results["xgb_probability"], results["rf_probability"], results["avg_probability"], results["agreement"]
         else:
             xgb_prob = float(model.predict_risk(feature_df)[0])
-            rf_prob  = xgb_prob
-            avg_prob = xgb_prob
-            agree    = True
+            rf_prob = avg_prob = xgb_prob; agree = True
 
-        rl_xgb = get_risk_level(xgb_prob)
-        rl_rf  = get_risk_level(rf_prob)
-        rl_avg = get_risk_level(avg_prob)
-
-        # Gauges
+        rl_xgb, rl_rf, rl_avg = get_risk_level(xgb_prob), get_risk_level(rf_prob), get_risk_level(avg_prob)
         st.plotly_chart(dual_risk_gauge(xgb_prob, rf_prob), use_container_width=True)
 
-        # Risk badges
         r1, r2, r3 = st.columns(3)
-        with r1:
-            st.markdown(f"""
-            <div style='text-align:center;'>
-              <span class='risk-badge' style='background:{rl_xgb["color"]}33; color:{rl_xgb["color"]}; border:1.5px solid {rl_xgb["color"]};'>
-                {rl_xgb["emoji"]} XGBoost: {xgb_prob:.1%}
-              </span>
-            </div>""", unsafe_allow_html=True)
-        with r2:
-            st.markdown(f"""
-            <div style='text-align:center;'>
-              <span class='risk-badge' style='background:{rl_rf["color"]}33; color:{rl_rf["color"]}; border:1.5px solid {rl_rf["color"]};'>
-                {rl_rf["emoji"]} Random Forest: {rf_prob:.1%}
-              </span>
-            </div>""", unsafe_allow_html=True)
-        with r3:
-            agree_str = "✅ Models Agree" if agree else "⚠️ Divergence Detected"
-            st.markdown(f"""
-            <div style='text-align:center;'>
-              <span class='risk-badge' style='background:{rl_avg["color"]}33; color:{rl_avg["color"]}; border:1.5px solid {rl_avg["color"]};'>
-                {rl_avg["emoji"]} Ensemble: {avg_prob:.1%} · {agree_str}
-              </span>
-            </div>""", unsafe_allow_html=True)
+        for col, label, prob, rl in [(r1,"XGBoost",xgb_prob,rl_xgb),(r2,"Random Forest",rf_prob,rl_rf),(r3,f"Ensemble · {'✅ Agree' if agree else '⚠️ Diverge'}",avg_prob,rl_avg)]:
+            with col:
+                st.markdown(f"<div style='text-align:center;'><span class='risk-badge' style='background:{rl['color']}33; color:{rl['color']}; border:1.5px solid {rl['color']};'>{rl['emoji']} {label}: {prob:.1%}</span></div>", unsafe_allow_html=True)
 
-        # ── SHAP explanation ──────────────────────────────────────────────────
+        # ── DATA SOURCES ──────────────────────────────────────────────────────
+        st.markdown("<div class='section-header'>📡 Real-Time Extraction Status</div>", unsafe_allow_html=True)
+        api_sources  = [l for l in extraction_log if l.get('source_type') == 'api']
+        news_sources = [l for l in extraction_log if l.get('source_type') == 'news']
+        govt_sources = [l for l in extraction_log if l.get('source_type') == 'government']
+
+        st.markdown("**🌐 API Sources**")
+        api_cols = st.columns(max(len(api_sources), 1))
+        for i, le in enumerate(api_sources):
+            with api_cols[i]:
+                si = "✅" if le["status"]=="success" else "⚠️"
+                st.markdown(f"<div class='source-card'><div class='source-name'>{si} {le['source']}</div><div style='font-size:0.72rem;'><span class='status-{le['status']}'>{le['status'].upper()}</span> · {le['response_ms']}ms</div></div>", unsafe_allow_html=True)
+
+        ng1, ng2 = st.columns(2)
+        for col, lbl, srcs in [(ng1,"📰 News",news_sources),(ng2,"🏛️ Govt",govt_sources)]:
+            with col:
+                st.markdown(f"**{lbl}**")
+                for le in srcs:
+                    si = "✅" if le["status"]=="success" else "⚠️"
+                    st.markdown(f"<div class='source-card'><div class='source-name'>{si} {le['source']}</div><div style='font-size:0.72rem;'>{le['status'].upper()} · {le['response_ms']}ms</div></div>", unsafe_allow_html=True)
+
+        st.plotly_chart(data_source_status_chart(extraction_log), use_container_width=True)
+
+        # ── SHAP ──────────────────────────────────────────────────────────────
         st.markdown("<div class='section-header'>🔬 SHAP Explanation — Why This Prediction</div>", unsafe_allow_html=True)
-        st.markdown("""
-        <p style='color:#5a6d82; font-size:0.72rem; font-family:"IBM Plex Mono",monospace;'>
-          SHAP (SHapley Additive exPlanations) decomposes the prediction into individual feature contributions.
-          Positive values push risk higher; negative values push risk lower.
-        </p>
-        """, unsafe_allow_html=True)
-
-        shap_explanations = {
-            'movement_score': ("Animal Activity", "Composite score of wildlife movement likelihood based on habitat, water proximity, and temporal factors"),
-            'driver_risk': ("Driver Behavior", "Combination of speed compliance, night driving, and road type risk factors"),
-            'species_risk': ("Species Danger Level", "Mapped risk score for the dominant wildlife species in the area"),
-            'kde_density': ("Historical Hotspot Density", "Kernel density estimate from past accident cluster analysis"),
-            'road_type': ("Road Classification", "Type of road — forest roads and rural roads carry higher inherent risk"),
-            'night_flag': ("Nighttime Driving", "Binary flag: 1 = night (8 PM–6 AM), when visibility drops and animals are active"),
-            'corridor_dist_km': ("Wildlife Corridor Distance", "Distance from nearest known wildlife migration corridor"),
-            'speed_ratio': ("Speed Compliance", "Ratio of actual speed to posted limit — values > 1.0 indicate speeding"),
-            'ndvi': ("Vegetation Density (NDVI)", "Normalized vegetation index — dense vegetation reduces driver sightlines"),
-            'past_accidents': ("Historical Incidents", "Number of recorded accidents in this location previously"),
-            'rainfall_mm': ("Current Rainfall", "Precipitation level — wet conditions + animal water-seeking = higher risk"),
-            'visibility_m': ("Visibility Distance", "How far ahead the driver can see — fog/rain reduce this dramatically"),
-            'temperature_c': ("Temperature", "Current temperature — extreme heat/cold affects animal movement patterns"),
-            'humidity_pct': ("Humidity Level", "Atmospheric humidity — correlates with fog formation and animal activity"),
-            'hour': ("Time of Day", "Hour of the day — dawn (5-7 AM) and dusk (6-8 PM) are peak crossing times"),
-            'dawn_dusk': ("Dawn/Dusk Window", "Whether it's currently in the critical dawn or dusk period"),
-            'breeding_season': ("Breeding Season", "Whether animals are in their breeding period — increases movement"),
-            'dist_water_km': ("Water Source Distance", "Distance to nearest water body — animals cross roads to reach water"),
-            'protected_dist_km': ("Protected Area Distance", "Distance from nearest wildlife sanctuary or national park"),
-        }
-
         try:
-            sv, X_in, base = model.predict_shap(feature_df)
+            sv, X_in, base_val = model.predict_shap(feature_df)
             sv_flat = sv[0] if sv.ndim == 2 else sv
-            st.plotly_chart(
-                shap_waterfall(sv_flat, model.feature_cols,
-                               X_in.iloc[0].values, base),
-                use_container_width=True
-            )
-
-            # ── Top SHAP Drivers Table ────────────────────────────────────────
-            st.markdown("<div class='section-header'>📊 Top Risk Drivers — Plain Language</div>", unsafe_allow_html=True)
-            pairs = sorted(zip(sv_flat, model.feature_cols, X_in.iloc[0].values),
-                           key=lambda x: abs(x[0]), reverse=True)[:8]
-
-            for sv_val, feat, feat_val in pairs:
-                direction = "↑ increases" if sv_val > 0 else "↓ decreases"
-                dir_color = "#ff3d5a" if sv_val > 0 else "#00e676"
-                human_name, description = shap_explanations.get(feat, (feat.replace("_", " ").title(), "Feature contributing to risk prediction"))
-                st.markdown(f"""
-                <div style='background:#0d1320; border:1px solid #1a2332; padding:0.7rem 1rem; margin:0.3rem 0; position:relative;'>
-                  <div style='position:absolute; left:0; top:0; bottom:0; width:3px; background:{dir_color};'></div>
-                  <div style='display:flex; justify-content:space-between; align-items:center;'>
-                    <div>
-                      <span style='font-family:"JetBrains Mono",monospace; font-size:0.78rem; color:#e8f0fa; font-weight:600;'>{human_name}</span>
-                      <span style='font-family:"IBM Plex Mono",monospace; font-size:0.6rem; color:#5a6d82; margin-left:0.5rem;'>({feat})</span>
-                    </div>
-                    <div style='text-align:right;'>
-                      <span style='font-family:"JetBrains Mono",monospace; font-size:0.82rem; color:{dir_color}; font-weight:600;'>{sv_val:+.4f}</span>
-                      <span style='font-family:"IBM Plex Mono",monospace; font-size:0.6rem; color:#5a6d82; margin-left:0.5rem;'>val={feat_val:.3f}</span>
-                    </div>
-                  </div>
-                  <div style='font-size:0.68rem; color:#5a6d82; margin-top:0.3rem; font-family:"IBM Plex Mono",monospace;'>
-                    {direction} risk · {description}
-                  </div>
-                </div>
-                """, unsafe_allow_html=True)
-
+            st.plotly_chart(shap_waterfall(sv_flat, model.feature_cols, X_in.iloc[0].values, base_val), use_container_width=True)
+            pairs = sorted(zip(sv_flat, model.feature_cols, X_in.iloc[0].values), key=lambda x: abs(x[0]), reverse=True)[:6]
+            for sv_val, feat_name, feat_val in pairs:
+                dc = "#ff3d5a" if sv_val > 0 else "#00e676"
+                st.markdown(f"<div style='background:#0d1320;border:1px solid #1a2332;padding:0.4rem 0.7rem;margin:0.15rem 0;position:relative;'><div style='position:absolute;left:0;top:0;bottom:0;width:3px;background:{dc};'></div><div style='display:flex;justify-content:space-between;'><span style='font-family:monospace;font-size:0.75rem;color:#e8f0fa;'>{feat_name}</span><span style='font-family:monospace;font-size:0.78rem;color:{dc};font-weight:600;'>{sv_val:+.4f}</span></div><div style='font-size:0.6rem;color:#5a6d82;'>val={feat_val:.3f}</div></div>", unsafe_allow_html=True)
         except Exception as e:
-            st.warning(f"SHAP explanation unavailable: {e}")
+            st.warning(f"SHAP unavailable: {e}")
 
-        # ── Extracted feature table ───────────────────────────────────────────
-        st.markdown("<div class='section-header'>📋 Extracted Feature Vector</div>", unsafe_allow_html=True)
-        feat_display = feature_df.T.reset_index()
-        feat_display.columns = ["Feature", "Value"]
-        st.dataframe(feat_display, use_container_width=True, height=400)
-
-        # ── Recommendations ──────────────────────────────────────────────────
+        # ── RECOMMENDATIONS ───────────────────────────────────────────────────
         st.markdown("<div class='section-header'>🛡 Mitigation Recommendations</div>", unsafe_allow_html=True)
         recs = []
         row = feature_df.iloc[0]
-        if row.get("night_flag", 0):     recs.append("🌙 **Nocturnal alert zone** — deploy flashing warning signs between 20:00–06:00")
-        if row.get("ndvi", 0) > 0.6:    recs.append("🌲 **High vegetation corridor** — install wildlife detection sensors")
-        if row.get("dist_water_km", 99) < 1: recs.append("💧 **Water source proximity** — install water crossing structures / underpasses")
-        if row.get("speed_ratio", 0) > 1.1:  recs.append("🚗 **Over-speed detected** — enforce speed cameras and lower limit")
-        if row.get("rainfall_mm", 0) > 30:   recs.append("🌧 **Low visibility conditions** — dynamic variable speed limits")
-        if row.get("breeding_season", 0):     recs.append("🔥 **Breeding season** — temporary speed restrictions May–October")
-        if row.get("corridor_dist_km", 99) < 2: recs.append("🗺 **Corridor proximity** — install wildlife fencing and crossing")
-        if not recs: recs.append("✅ Risk factors within acceptable range — standard monitoring advised")
-        for rec in recs:
-            st.markdown(f"- {rec}")
-
-        # ── Data source detail expanders ──────────────────────────────────────
-        st.markdown("<div class='section-header'>📡 Detailed Data Source Logs</div>", unsafe_allow_html=True)
-        for log_entry in extraction_log:
-            status_icon = "✅" if log_entry["status"] == "success" else "⚠️" if log_entry["status"] == "fallback" else "❌"
-            with st.expander(f"{status_icon} {log_entry['source']}  —  {log_entry['response_ms']}ms"):
-                st.markdown(f"**API URL:** `{log_entry['api_url']}`")
-                st.markdown(f"**Description:** {log_entry['description']}")
-                st.markdown(f"**Status:** `{log_entry['status']}`")
-                st.markdown(f"**Timestamp:** `{log_entry['timestamp']}`")
-                st.markdown(f"**Features extracted:** {', '.join(log_entry['features'])}")
-                if log_entry["error"]:
-                    st.error(f"Error: {log_entry['error']}")
-                if log_entry["raw_preview"]:
-                    st.code(log_entry["raw_preview"], language="json")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PAGE 3 — RISK MAP (Heatmap + Live Prediction Toggle)
-# ═══════════════════════════════════════════════════════════════════════════════
-elif page == "🗺 Risk Map":
-    from streamlit_folium import st_folium
-    from utils.helpers import build_folium_map, get_risk_level
-    from data.realtime_extractor import PROTECTED_AREAS, WILDLIFE_CORRIDORS
-    import folium
-    from folium.plugins import HeatMap, MarkerCluster
-
-    st.markdown("""
-    <h1 style='font-family:"Space Mono",monospace; font-size:1.8rem; margin:0 0 0.5rem 0;'>
-      🗺 Geospatial <span style='color:#FF6B35;'>Risk Map</span>
-    </h1>
-    """, unsafe_allow_html=True)
-
-    # ── Toggle: Full Heatmap vs Live Prediction ──────────────────────────────
-    has_prediction = "last_prediction" in st.session_state
-    toggle_options = ["🌡️ Full Risk Heatmap (All Data)", "📍 Live Prediction Result"]
-
-    map_mode = st.radio(
-        "Map View",
-        toggle_options,
-        index=1 if has_prediction else 0,
-        horizontal=True,
-        key="map_mode_toggle",
-    )
+        if row.get("night_flag", 0): recs.append("🌙 **Nocturnal zone** — deploy flashing signs 20:00–06:00")
+        if row.get("ndvi", 0) > 0.6: recs.append("🌲 **Heavy vegetation** — install wildlife detection sensors")
+        if row.get("dist_water_km", 99) < 1: recs.append("💧 **Near water** — install crossing structures")
+        if row.get("speed_ratio", 0) > 1.1: recs.append("🚗 **Over-speed** — deploy speed cameras")
+        if row.get("corridor_dist_km", 99) < 2: recs.append("🗺 **Near corridor** — install wildlife fencing")
+        if not recs: recs.append("✅ Risk factors acceptable — standard monitoring")
+        for rec in recs: st.markdown(f"- {rec}")
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  MODE 1: FULL HEATMAP (training data + PAs + corridors)
+    #  SECTION C: DATA-RICH INTERACTIVE MAP (always visible)
     # ══════════════════════════════════════════════════════════════════════════
-    if map_mode == toggle_options[0]:
-        st.markdown("""
-        <p style='color:#8B949E; font-size:0.82rem; margin:0 0 1rem 0;'>
-          Risk heatmap from training data — density of wildlife-vehicle collision zones with all protected areas & corridors
-        </p>
-        """, unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🗺 Tactical Intelligence Map</div>", unsafe_allow_html=True)
 
-        # Filters
-        fc1, fc2, fc3 = st.columns(3)
-        with fc1: f_season  = st.multiselect("Season",    df["season"].unique().tolist(),    default=df["season"].unique().tolist())
-        with fc2: f_species = st.multiselect("Species",   df["species"].unique().tolist(),   default=df["species"].unique().tolist())
-        with fc3: f_road    = st.multiselect("Road Type", df["road_type"].unique().tolist(), default=df["road_type"].unique().tolist())
+    try:
+        pred = st.session_state.get("last_prediction", None)
+        map_lat = pred["lat"] if pred else 12.0
+        map_lon = pred["lon"] if pred else 76.5
+        map_z   = 11 if pred else 6
 
-        map_df = df[df["season"].isin(f_season) & df["species"].isin(f_species) & df["road_type"].isin(f_road)]
+        tile_map = {"Google Satellite Hybrid": GOOGLE_HYB, "Google Satellite": GOOGLE_SAT, "Google Roads": GOOGLE_ROAD, "ESRI Satellite": ESRI_SAT}
+        tile_url = tile_map.get(base_layer)
 
-        # Build rich Folium map
-        m = folium.Map(location=[15.0, 77.5], zoom_start=6, tiles="CartoDB dark_matter", control_scale=True)
-
-        # Heatmap layer from training data
-        acc = map_df[map_df["accident"] == 1][["latitude", "longitude", "risk_score"]].dropna()
-        heat_data = [[r.latitude, r.longitude, r.risk_score] for _, r in acc.iterrows()]
-        if heat_data:
-            HeatMap(
-                heat_data, min_opacity=0.3, max_zoom=14, radius=18, blur=15,
-                gradient={"0.2": "#06D6A0", "0.5": "#FFD166", "0.75": "#EF476F", "1.0": "#B5179E"},
-            ).add_to(m)
-
-        # Protected Areas layer
-        pa_group = folium.FeatureGroup(name="🟢 Protected Areas (21)")
-        for pa in PROTECTED_AREAS:
-            folium.CircleMarker(
-                location=[pa["lat"], pa["lon"]], radius=7,
-                color="#06D6A0", fill=True, fill_color="#06D6A0", fill_opacity=0.7,
-                popup=folium.Popup(f"<b>🟢 {pa['name']}</b><br>{pa.get('state','')}", max_width=220),
-                tooltip=pa["name"],
-            ).add_to(pa_group)
-        pa_group.add_to(m)
-
-        # Corridors layer
-        cor_group = folium.FeatureGroup(name="🟠 Wildlife Corridors (11)")
-        for cor in WILDLIFE_CORRIDORS:
-            folium.CircleMarker(
-                location=[cor["lat"], cor["lon"]], radius=5,
-                color="#FFD166", fill=True, fill_color="#FFD166", fill_opacity=0.7,
-                popup=folium.Popup(f"<b>🟠 {cor['name']}</b><br>Wildlife Corridor", max_width=220),
-                tooltip=cor["name"],
-            ).add_to(cor_group)
-        cor_group.add_to(m)
-
-        # High-risk markers
-        high = map_df[map_df["risk_score"] > 0.70].head(150)
-        cluster = MarkerCluster(name="🔴 High Risk Incidents").add_to(m)
-        for _, row in high.iterrows():
-            rl = get_risk_level(row["risk_score"])
-            folium.CircleMarker(
-                location=[row["latitude"], row["longitude"]], radius=5,
-                color=rl["color"], fill=True, fill_opacity=0.8,
-                popup=folium.Popup(
-                    f"<b>{rl['emoji']} {rl['label']}</b><br>"
-                    f"Risk: {row['risk_score']:.2%}<br>"
-                    f"Species: {row.get('species','–')}<br>"
-                    f"Road: {row.get('road_type','–')}<br>"
-                    f"Hour: {int(row.get('hour',0)):02d}:00",
-                    max_width=200),
-            ).add_to(cluster)
-
-        folium.LayerControl().add_to(m)
-
-        # Render
-        c_left, c_right = st.columns([3, 1])
-        with c_left:
-            st_folium(m, width=None, height=620, returned_objects=[])
-
-        with c_right:
-            st.markdown("<div class='section-header'>Map Legend</div>", unsafe_allow_html=True)
-            for color, label in [("#06D6A0","🟢 Protected Areas"),("#FFD166","🟠 Corridors"),("#EF476F","🔴 High Risk"),("#B5179E","🟣 Critical")]:
-                st.markdown(f"<div style='display:flex;align-items:center;gap:0.5rem;margin:0.3rem 0;'><div style='width:14px;height:14px;border-radius:50%;background:{color};'></div><span style='font-size:0.82rem;'>{label}</span></div>", unsafe_allow_html=True)
-            st.markdown(f"""
-            <div style='margin-top:0.5rem; padding:0.3rem 0; border-top:1px solid var(--border);'></div>
-            <div class='section-header'>Summary</div>
-            """, unsafe_allow_html=True)
-            st.markdown(f"""
-            <div class='metric-card'>
-              <h3>Records</h3><div class='value' style='font-size:1.3rem;'>{len(map_df):,}</div>
-            </div>
-            <div class='metric-card'>
-              <h3>Accidents</h3><div class='value' style='font-size:1.3rem;'>{int(map_df["accident"].sum()):,}</div>
-            </div>
-            <div class='metric-card'>
-              <h3>Avg Risk</h3><div class='value' style='font-size:1.3rem;'>{map_df["risk_score"].mean():.3f}</div>
-            </div>
-            <div class='metric-card'>
-              <h3>Heatmap Points</h3><div class='value' style='font-size:1.3rem;'>{len(heat_data):,}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # ══════════════════════════════════════════════════════════════════════════
-    #  MODE 2: LIVE PREDICTION (from Live Risk Predictor result)
-    # ══════════════════════════════════════════════════════════════════════════
-    else:
-        if not has_prediction:
-            st.warning("⚠️ No live prediction data yet. Go to **🔮 Live Risk Predictor** and run an extraction first.")
-            st.info("The Live Risk Predictor fetches real-time data from 7 sources (APIs, news, govt portals) and the results will appear here on the map.")
+        if base_layer == "OpenStreetMap (Fast)":
+            m = folium.Map(location=[map_lat, map_lon], zoom_start=map_z, tiles="OpenStreetMap", control_scale=True, prefer_canvas=True)
+        elif base_layer == "Dark (CartoDB)":
+            m = folium.Map(location=[map_lat, map_lon], zoom_start=map_z, tiles="CartoDB dark_matter", control_scale=True, prefer_canvas=True)
+        elif tile_url:
+            m = folium.Map(location=[map_lat, map_lon], zoom_start=map_z, tiles=None, control_scale=True, prefer_canvas=True)
+            subs = GOOGLE_SUBS if "google" in tile_url else None
+            folium.TileLayer(tiles=tile_url, attr="Google/ESRI", name=base_layer, max_zoom=20, subdomains=subs or ["a"]).add_to(m)
         else:
-            pred = st.session_state["last_prediction"]
-            feat = pred["features"]
-            spatial = pred["spatial"] or {}
-            pred_lat, pred_lon = pred["lat"], pred["lon"]
-            loc_name = pred.get("location_name", "Searched Location")
+            m = folium.Map(location=[map_lat, map_lon], zoom_start=map_z, tiles="OpenStreetMap", control_scale=True, prefer_canvas=True)
 
-            st.markdown(f"""
-            <p style='color:#8B949E; font-size:0.82rem; margin:0 0 0.5rem 0;'>
-              Showing extracted data for <b style='color:#FF6B35;'>{loc_name}</b> · Lat {pred_lat:.4f}, Lon {pred_lon:.4f}
-            </p>
-            """, unsafe_allow_html=True)
+        # ── LAYER 1: Risk Heatmap (sampled to max 500 for speed) ─────────────
+        if show_heatmap:
+            acc = df[df["accident"] == 1][["latitude", "longitude", "risk_score"]].dropna()
+            if len(acc) > 500:
+                acc = acc.sample(500, random_state=42)
+            hd = acc.values.tolist()
+            if hd:
+                hg = folium.FeatureGroup(name="🌡️ Collision Risk Heatmap")
+                HeatMap(hd, min_opacity=0.25, max_zoom=14, radius=20, blur=18,
+                        gradient={"0.15":"#06D6A0","0.35":"#FFD166","0.6":"#EF476F","0.85":"#B5179E","1.0":"#ff0040"}).add_to(hg)
+                hg.add_to(m)
 
-            # Build focused map
-            m = folium.Map(location=[pred_lat, pred_lon], zoom_start=11, tiles="CartoDB dark_matter", control_scale=True)
+        # ── LAYER 2: NDVI + Weather (only when toggled, max 30 each) ─────────
+        if show_all_data:
+            grid = df.groupby([df["latitude"].round(1), df["longitude"].round(1)]).agg(
+                ndvi=("ndvi","mean"), risk=("risk_score","mean"),
+                acc_rate=("accident","mean"), rain=("rainfall_mm","mean"),
+                vis=("visibility_m","mean"), count=("accident","count"),
+            ).reset_index().rename(columns={"latitude":"lat","longitude":"lon"})
 
-            # Nearby PAs (within ~100km)
-            from data.realtime_extractor import _haversine
-            nearby_pas = []
+            ndvi_grp = folium.FeatureGroup(name="🌿 NDVI Vegetation")
+            for _, s in grid.head(30).iterrows():
+                nv = s.get("ndvi", 0.5)
+                nc = "#1b5e20" if nv>0.6 else "#4caf50" if nv>0.45 else "#c8a020" if nv>0.3 else "#8B6914"
+                folium.Circle(location=[s["lat"],s["lon"]], radius=5000, color=nc, fill=True, fill_color=nc, fill_opacity=0.2, weight=1,
+                    popup=f"🌿 NDVI {nv:.3f}<br>Risk {s.get('risk',0):.3f}", tooltip=f"NDVI {nv:.2f}").add_to(ndvi_grp)
+            ndvi_grp.add_to(m)
+
+            wx_grp = folium.FeatureGroup(name="🌧️ Rain Zones")
+            for _, s in grid.head(30).iterrows():
+                rv = s.get("rain", 0)
+                if rv > 15:   wc, wr = "#1565c0", 4000
+                elif rv > 5:  wc, wr = "#42a5f5", 2500
+                else:         wc, wr = "#90caf9", 1500
+                folium.Circle(location=[s["lat"],s["lon"]], radius=wr, color=wc, fill=True, fill_color=wc, fill_opacity=0.12, weight=1,
+                    popup=f"🌧 Rain {rv:.1f}mm<br>👁 Vis {s.get('vis',0):.0f}m", tooltip=f"Rain {rv:.1f}mm").add_to(wx_grp)
+            wx_grp.add_to(m)
+
+        # ── LAYER 3: Top 20 Risk Segments ────────────────────────────────────
+        risk_agg = df.groupby([df["latitude"].round(1), df["longitude"].round(1)]).agg(
+            risk=("risk_score","mean"), ndvi=("ndvi","mean"),
+            acc_rate=("accident","mean"), count=("accident","count"),
+        ).reset_index().rename(columns={"latitude":"lat","longitude":"lon"})
+        seg_risk_grp = folium.FeatureGroup(name="⚠️ High Risk Segments")
+        for _, s in risk_agg.nlargest(20, "risk").iterrows():
+            r = s.get("risk", 0.5)
+            sc = "#06D6A0" if r<0.35 else "#FFD166" if r<0.55 else "#EF476F" if r<0.75 else "#B5179E"
+            folium.CircleMarker(location=[s["lat"],s["lon"]], radius=4+int(r*7), color=sc, fill=True, fill_color=sc, fill_opacity=0.7,
+                popup=f"⚠️ Risk {r:.3f}<br>NDVI {s.get('ndvi',0):.3f}<br>Acc {s.get('acc_rate',0):.1%}", tooltip=f"Risk {r:.2f}").add_to(seg_risk_grp)
+        seg_risk_grp.add_to(m)
+
+        # ── LAYER 4: Protected Areas ─────────────────────────────────────────
+        if show_pas:
+            pg = folium.FeatureGroup(name="🟢 Protected Areas")
             for pa in PROTECTED_AREAS:
-                d = _haversine(pred_lat, pred_lon, pa["lat"], pa["lon"])
-                if d < 100:
-                    nearby_pas.append((d, pa))
-                    folium.CircleMarker(
-                        location=[pa["lat"], pa["lon"]], radius=8,
-                        color="#06D6A0", fill=True, fill_color="#06D6A0", fill_opacity=0.7,
-                        popup=folium.Popup(f"<b>🟢 {pa['name']}</b><br>{pa.get('state','')}<br>{d:.1f}km away", max_width=220),
-                        tooltip=f"{pa['name']} ({d:.0f}km)",
-                    ).add_to(m)
+                dt = ""
+                if pred:
+                    d = _haversine(pred["lat"], pred["lon"], pa["lat"], pa["lon"])
+                    dt = f"<br>{d:.1f}km away"
+                folium.CircleMarker(location=[pa["lat"],pa["lon"]], radius=9, color="#06D6A0", fill=True, fill_color="#06D6A0", fill_opacity=0.8,
+                    popup=folium.Popup(f"<b>🟢 {pa['name']}</b><br>{pa.get('state','')}{dt}", max_width=240), tooltip=pa["name"]).add_to(pg)
+            pg.add_to(m)
 
-            # Nearby corridors
-            nearby_cors = []
+        # ── LAYER 5: Corridors ───────────────────────────────────────────────
+        if show_corridors:
+            cg = folium.FeatureGroup(name="🟠 Wildlife Corridors")
             for cor in WILDLIFE_CORRIDORS:
-                d = _haversine(pred_lat, pred_lon, cor["lat"], cor["lon"])
-                if d < 100:
-                    nearby_cors.append((d, cor))
-                    folium.CircleMarker(
-                        location=[cor["lat"], cor["lon"]], radius=6,
-                        color="#FFD166", fill=True, fill_color="#FFD166", fill_opacity=0.7,
-                        popup=folium.Popup(f"<b>🟠 {cor['name']}</b><br>{d:.1f}km away", max_width=220),
-                        tooltip=f"{cor['name']} ({d:.0f}km)",
-                    ).add_to(m)
+                folium.CircleMarker(location=[cor["lat"],cor["lon"]], radius=7, color="#FFD166", fill=True, fill_color="#FFD166", fill_opacity=0.8,
+                    popup=folium.Popup(f"<b>🟠 {cor['name']}</b>", max_width=240), tooltip=cor["name"]).add_to(cg)
+            cg.add_to(m)
 
-            # Prediction marker
+        # ── LAYER 6: Pipeline prediction data ────────────────────────────────
+        if pred:
+            feat = pred["features"]
+            spatial = pred.get("spatial") or {}
+            loc_name = pred.get("location_name", "Location")
             risk_score = feat.get("driver_risk", 0.5)
-            risk_color = "#06D6A0" if risk_score < 0.4 else "#FFD166" if risk_score < 0.7 else "#EF476F" if risk_score < 1.0 else "#B5179E"
+            rc = "#06D6A0" if risk_score<0.4 else "#FFD166" if risk_score<0.7 else "#EF476F" if risk_score<1.0 else "#B5179E"
 
-            popup_html = f"""
-            <div style='font-family:sans-serif; min-width:260px;'>
-                <h3 style='margin:0 0 6px 0; color:{risk_color};'>📍 {loc_name}</h3>
-                <table style='font-size:11px; width:100%;'>
-                    <tr><td><b>Species</b></td><td>{feat.get('species','—').capitalize()} (risk {feat.get('species_risk',0):.0%})</td></tr>
-                    <tr><td><b>Road Type</b></td><td>{feat.get('road_type','—')}</td></tr>
-                    <tr><td><b>Temperature</b></td><td>{feat.get('temperature_c',0):.1f}°C</td></tr>
-                    <tr><td><b>Humidity</b></td><td>{feat.get('humidity_pct',0):.0f}%</td></tr>
-                    <tr><td><b>Rain</b></td><td>{feat.get('rainfall_mm',0):.1f}mm</td></tr>
-                    <tr><td><b>Visibility</b></td><td>{feat.get('visibility_m',0)}m</td></tr>
-                    <tr><td><b>NDVI</b></td><td>{feat.get('ndvi',0):.3f}</td></tr>
-                    <tr><td><b>Nearest PA</b></td><td>{spatial.get('nearest_pa','—')} ({spatial.get('protected_dist_km',0):.1f}km)</td></tr>
-                    <tr><td><b>Nearest Corridor</b></td><td>{spatial.get('nearest_corridor','—')} ({spatial.get('corridor_dist_km',0):.1f}km)</td></tr>
-                    <tr><td><b>Driver Risk</b></td><td style='color:{risk_color}; font-weight:bold;'>{risk_score:.3f}</td></tr>
-                </table>
-            </div>
-            """
-            folium.Marker(
-                location=[pred_lat, pred_lon],
-                popup=folium.Popup(popup_html, max_width=320),
-                tooltip=f"📍 {loc_name} — Risk {risk_score:.3f}",
-                icon=folium.Icon(color="red", icon="exclamation-triangle", prefix="fa"),
-            ).add_to(m)
+            popup_html = (
+                f"<div style='font-family:sans-serif;min-width:260px;'>"
+                f"<h3 style='margin:0 0 6px;color:{rc};'>📍 {loc_name}</h3>"
+                f"<table style='font-size:11px;width:100%;'>"
+                f"<tr><td><b>🦁 Species</b></td><td>{feat.get('species','—').capitalize()} ({feat.get('species_risk',0):.0%})</td></tr>"
+                f"<tr><td><b>🌡️ Temp</b></td><td>{feat.get('temperature_c',0):.1f}°C · {feat.get('humidity_pct',0):.0f}%</td></tr>"
+                f"<tr><td><b>🌧️ Rain</b></td><td>{feat.get('rainfall_mm',0):.1f}mm</td></tr>"
+                f"<tr><td><b>👁 Vis</b></td><td>{feat.get('visibility_m',0)}m</td></tr>"
+                f"<tr><td><b>🌿 NDVI</b></td><td>{feat.get('ndvi',0):.3f}</td></tr>"
+                f"<tr><td><b>🏞️ PA</b></td><td>{spatial.get('nearest_pa','—')} ({spatial.get('protected_dist_km',0):.1f}km)</td></tr>"
+                f"<tr><td><b>🚗 Speed</b></td><td>{feat.get('actual_speed',0):.0f}/{feat.get('speed_limit',0)} km/h</td></tr>"
+                f"<tr><td><b>⚠️ Risk</b></td><td style='color:{rc};font-weight:bold;'>{risk_score:.3f}</td></tr>"
+                f"</table></div>"
+            )
 
-            # Analysis radius
-            folium.Circle(
-                location=[pred_lat, pred_lon], radius=5000,
-                color=risk_color, fill=True, fill_opacity=0.08, popup="5km analysis area",
-            ).add_to(m)
+            pred_grp = folium.FeatureGroup(name="📍 Prediction")
+            folium.Marker(location=[pred["lat"],pred["lon"]], popup=folium.Popup(popup_html, max_width=300),
+                tooltip=f"📍 {loc_name} — Risk {risk_score:.3f}", icon=folium.Icon(color="red", icon="exclamation-triangle", prefix="fa")).add_to(pred_grp)
+            folium.Circle(location=[pred["lat"],pred["lon"]], radius=5000, color=rc, fill=True, fill_opacity=0.1, weight=2).add_to(pred_grp)
+            HeatMap([[pred["lat"],pred["lon"],risk_score]], min_opacity=0.5, radius=45, blur=30,
+                    gradient={"0.2":"#06D6A0","0.5":"#FFD166","0.75":"#EF476F","1.0":"#B5179E"}).add_to(pred_grp)
 
-            # Risk heatmap point (single-point, visually showing the searched area)
-            HeatMap(
-                [[pred_lat, pred_lon, risk_score]],
-                min_opacity=0.4, radius=40, blur=25,
-                gradient={"0.2": "#06D6A0", "0.5": "#FFD166", "0.75": "#EF476F", "1.0": "#B5179E"},
-            ).add_to(m)
+            # Weather badge
+            temp_v = feat.get("temperature_c", 0)
+            rain_v = feat.get("rainfall_mm", 0)
+            vis_v  = feat.get("visibility_m", 0)
+            folium.Marker(location=[pred["lat"]+0.015, pred["lon"]+0.015],
+                icon=folium.DivIcon(html=f"<div style='background:#1a237e;color:white;border-radius:8px;padding:2px 5px;font-size:9px;font-family:monospace;border:1px solid #42a5f5;white-space:nowrap;'>🌡{temp_v:.0f}°C 🌧{rain_v:.0f}mm 👁{vis_v:.0f}m</div>", icon_size=(150,22))).add_to(pred_grp)
 
-            folium.LayerControl().add_to(m)
+            # NDVI ring
+            ndvi_val = feat.get("ndvi", 0.5)
+            ndvi_c = "#1b5e20" if ndvi_val>0.6 else "#4caf50" if ndvi_val>0.45 else "#c8a020" if ndvi_val>0.3 else "#8B6914"
+            folium.Circle(location=[pred["lat"],pred["lon"]], radius=3000, color=ndvi_c, fill=True, fill_color=ndvi_c, fill_opacity=0.12, weight=1).add_to(pred_grp)
+            pred_grp.add_to(m)
 
-            # Render
-            c_left, c_right = st.columns([3, 1])
-            with c_left:
-                st_folium(m, width=None, height=620, returned_objects=[])
+            # Sub-locations
+            sub_locs = pred.get("sub_locations", [])
+            if sub_locs:
+                sg = folium.FeatureGroup(name=f"🎯 Sub-Locations ({len(sub_locs)})")
+                for i, sl in enumerate(sub_locs[:20]):
+                    folium.CircleMarker(location=[sl["lat"],sl["lon"]], radius=6, color="#00e5ff", fill=True, fill_color="#00e5ff", fill_opacity=0.6,
+                        popup=f"🎯 {sl['name'][:60]}", tooltip=f"#{i+1}").add_to(sg)
+                sg.add_to(m)
 
-            with c_right:
-                st.markdown("<div class='section-header'>📍 Extracted Data</div>", unsafe_allow_html=True)
+            # Pipeline source badges
+            log_data = pred.get("log", [])
+            for li, l in enumerate(log_data[:4]):
+                src_type = l.get('source_type','')
+                bg = {"api":"#00695c","news":"#e65100","government":"#4a148c","computation":"#1565c0"}.get(src_type, "#333")
+                emoji = {"api":"🌐","news":"📰","government":"🏛️","computation":"⚙️"}.get(src_type, "📡")
+                offset_lat = 0.025 * (1 if li < 2 else -1)
+                offset_lon = 0.025 * (1 if li % 2 == 0 else -1)
+                folium.Marker(
+                    location=[pred["lat"]+offset_lat, pred["lon"]+offset_lon],
+                    icon=folium.DivIcon(html=f"<div style='background:{bg};color:white;border-radius:5px;padding:1px 4px;font-size:8px;font-family:monospace;white-space:nowrap;'>{emoji} {l.get('source','')[:18]} {'✅' if l['status']=='success' else '⚠️'}</div>", icon_size=(140,16))
+                ).add_to(m)
+
+        folium.LayerControl(collapsed=False).add_to(m)
+
+        # ── Render Map + Sidebar ─────────────────────────────────────────────
+        cl, cr = st.columns([3, 1])
+        with cl:
+            st_folium(m, width=None, height=600, returned_objects=[])
+        with cr:
+            if pred:
+                st.markdown("<div class='section-header'>📍 Extracted Intel</div>", unsafe_allow_html=True)
                 st.markdown(f"""
-                <div class='metric-card'>
-                  <h3>Location</h3><div class='value' style='font-size:0.85rem;'>{loc_name[:40]}</div>
-                  <div class='sub'>{pred_lat:.4f}, {pred_lon:.4f}</div>
-                </div>
-                <div class='metric-card'>
-                  <h3>Nearest PA</h3><div class='value' style='font-size:0.9rem;'>{spatial.get('nearest_pa','—')}</div>
-                  <div class='sub'>{spatial.get('protected_dist_km',0):.1f}km · {spatial.get('nearest_pa_state','')}</div>
-                </div>
-                <div class='metric-card'>
-                  <h3>Nearest Corridor</h3><div class='value' style='font-size:0.9rem;'>{spatial.get('nearest_corridor','—')}</div>
-                  <div class='sub'>{spatial.get('corridor_dist_km',0):.1f}km</div>
-                </div>
-                <div class='metric-card'>
-                  <h3>Species</h3><div class='value' style='font-size:1.1rem;'>{feat.get('species','—').capitalize()}</div>
-                  <div class='sub'>Risk: {feat.get('species_risk',0):.0%}</div>
-                </div>
-                <div class='metric-card'>
-                  <h3>Weather</h3><div class='value' style='font-size:0.9rem;'>{feat.get('temperature_c',0):.1f}°C · {feat.get('humidity_pct',0):.0f}%</div>
-                  <div class='sub'>Rain {feat.get('rainfall_mm',0):.1f}mm · Vis {feat.get('visibility_m',0)}m</div>
-                </div>
-                <div class='metric-card'>
-                  <h3>NDVI / Road</h3><div class='value' style='font-size:0.9rem;'>{feat.get('ndvi',0):.3f} · {feat.get('road_type','—')}</div>
-                  <div class='sub'>Width {feat.get('road_width_m',0)}m · Light {'Yes' if feat.get('street_lighting',0) else 'No'}</div>
-                </div>
+                <div class='metric-card'><h3>📍 Location</h3><div class='value' style='font-size:0.82rem;'>{loc_name[:35]}</div><div class='sub'>{pred['lat']:.4f}, {pred['lon']:.4f}</div></div>
+                <div class='metric-card'><h3>🌡️ Weather</h3><div class='value' style='font-size:0.9rem;'>{feat.get('temperature_c',0):.1f}°C · {feat.get('humidity_pct',0):.0f}%</div><div class='sub'>Rain {feat.get('rainfall_mm',0):.1f}mm · Vis {feat.get('visibility_m',0)}m</div></div>
+                <div class='metric-card'><h3>🌿 NDVI</h3><div class='value' style='font-size:1.1rem; color:{ndvi_c};'>{feat.get('ndvi',0):.3f}</div><div class='sub'>{'Dense' if ndvi_val>0.6 else 'Good' if ndvi_val>0.45 else 'Moderate' if ndvi_val>0.3 else 'Sparse'}</div></div>
+                <div class='metric-card'><h3>🦁 Species</h3><div class='value' style='font-size:0.9rem;'>{feat.get('species','—').capitalize()}</div><div class='sub'>Risk: {feat.get('species_risk',0):.0%}</div></div>
+                <div class='metric-card'><h3>🏞️ PA</h3><div class='value' style='font-size:0.82rem;'>{spatial.get('nearest_pa','—')}</div><div class='sub'>{spatial.get('protected_dist_km',0):.1f}km</div></div>
+                <div class='metric-card'><h3>🚗 Speed</h3><div class='value' style='font-size:0.9rem;'>{feat.get('actual_speed',0):.0f}/{feat.get('speed_limit',0):.0f}</div><div class='sub'>Ratio {feat.get('speed_ratio',0):.2f}</div></div>
                 """, unsafe_allow_html=True)
-
-                st.markdown(f"<div style='margin-top:0.5rem; border-top:1px solid var(--border); padding-top:0.4rem;'></div>", unsafe_allow_html=True)
-                st.markdown("<div class='section-header'>📡 Data Sources</div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-header'>📡 Pipeline</div>", unsafe_allow_html=True)
                 summary = pred["summary"]
-                st.markdown(f"**{summary['success_count']}/{summary['total_sources']}** sources · **{summary['total_time_ms']}ms**")
+                st.markdown(f"**{summary['success_count']}/{summary['total_sources']}** · **{summary['total_time_ms']}ms**")
                 for l in pred["log"]:
-                    icon = "✅" if l["status"]=="success" else "⚠️"
-                    st.markdown(f"<div style='font-size:0.68rem;'>{icon} {l['source'][:28]} · {l['response_ms']}ms</div>", unsafe_allow_html=True)
+                    ic = "✅" if l["status"]=="success" else "⚠️"
+                    st.markdown(f"<div style='font-size:0.65rem;'>{ic} {l['source'][:22]} · {l['response_ms']}ms</div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<div class='section-header'>Map Layers</div>", unsafe_allow_html=True)
+                legends = [("#EF476F","🌡️ Risk Heatmap"),("#1b5e20","🌿 NDVI Dense"),("#4caf50","🌿 NDVI Good"),("#1565c0","🌧️ Heavy Rain"),("#06D6A0","🟢 Protected Areas"),("#FFD166","🟠 Corridors"),("#00e5ff","🎯 Sub-Locations")]
+                for color, label in legends:
+                    st.markdown(f"<div style='display:flex;align-items:center;gap:0.4rem;margin:0.15rem 0;'><div style='width:11px;height:11px;border-radius:50%;background:{color};'></div><span style='font-size:0.7rem;'>{label}</span></div>", unsafe_allow_html=True)
+                st.info("🔎 Search → Extract → Predict to populate map with live data")
 
-                st.markdown(f"""
-                <div style='margin-top:0.5rem; border-top:1px solid var(--border); padding-top:0.4rem;'></div>
-                <div class='section-header'>📌 Nearby</div>
-                """, unsafe_allow_html=True)
-                st.markdown(f"**{len(nearby_pas)}** Protected Areas within 100km")
-                st.markdown(f"**{len(nearby_cors)}** Corridors within 100km")
+    except Exception as map_err:
+        st.error(f"Map rendering error: {map_err}")
+        # Fallback: always show a basic map
+        m_fallback = folium.Map(location=[12.0, 76.5], zoom_start=6, tiles="OpenStreetMap")
+        for pa in PROTECTED_AREAS:
+            folium.CircleMarker(location=[pa["lat"],pa["lon"]], radius=7, color="#06D6A0", fill=True, tooltip=pa["name"]).add_to(m_fallback)
+        st_folium(m_fallback, width=None, height=500, returned_objects=[])
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 4 — ANALYTICS
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "📊 Analytics":
